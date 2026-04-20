@@ -1,12 +1,12 @@
 'use client'
 import { useEffect, useRef } from 'react'
 import { BACKEND_URL } from './config'
+import { io } from 'socket.io-client'
 
 let socket = null
 
 export function getSocket() {
   if (!socket) {
-    const { io } = require('socket.io-client')
     socket = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,

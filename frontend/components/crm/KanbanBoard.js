@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { kanbanCache } from '../../lib/kanbanCache'
 import { useSocket } from '../../lib/socket'
 import { ChevronLeft, ChevronRight, RefreshCw, Bell } from 'lucide-react'
+import { useApp } from '../../contexts/AppContext'
 
 const ALL_COLUMNS = [
   'leads','negociacao','aguardando_cotacao','agendado',
