@@ -4,7 +4,7 @@
 
 const _cache = {
   columns: {},   // { 'leads_1': { data, ts } }
-  TTL: 90 * 1000, // 90 segundos
+  TTL: 120 * 1000, // 2 minutos
 }
 
 export const kanbanCache = {

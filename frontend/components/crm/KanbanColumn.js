@@ -30,21 +30,21 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
   const initialLoad = useRef(true)
   const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove } = useApp()
 
-  const loadLeads = useCallback(async (pageNum = 1, reset = false, silent = false) => {
-    if (loadingRef.current) return
+  const loadLeads = useCallback(async (pageNum = 1, silent = false) => {
+    if (loadingRef.current && !silent) return
+    if (loadingRef.current && silent) return // não duplica
     loadingRef.current = true
     if (!silent) setLoading(true)
 
     try {
-      // Usa cache na primeira carga ou carga silenciosa
-      if ((reset || initialLoad.current) && pageNum === 1) {
+      // Tenta cache primeiro (instantâneo)
+      if (pageNum === 1) {
         const cached = kanbanCache.get(columnId, 1)
-        if (cached && initialLoad.current) {
+        if (cached) {
           setLeads(cached.items)
           setHasMore(cached.hasMore)
           setTotal(cached.total)
           setPage(1)
-          initialLoad.current = false
           loadingRef.current = false
           if (!silent) setLoading(false)
           return
@@ -52,19 +52,18 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
       }
 
       const data = await api.getColumnLeads(columnId, pageNum, currentAgent?.id, currentAgent?.role)
-      if (pageNum === 1) kanbanCache.set(columnId, 1, data)
 
-      if (reset || pageNum === 1) {
-        // Atualização silenciosa: funde os dados novos sem limpar o estado visível
+      if (pageNum === 1) {
+        kanbanCache.set(columnId, 1, data)
         if (silent) {
+          // Merge silencioso: preserva cards em movimento pendente
           setLeads(prev => {
-            const existingIds = new Set(data.items.map(l => l.id))
-            const kept = prev.filter(l => existingIds.has(l.id) || pendingMoves[l.id])
-            const merged = data.items.map(item => {
-              const pending = pendingMoves[item.id]
-              return pending ? pending.lead : item
+            const pending = Object.values(pendingMoves).filter(m => m.toCol === columnId || m.fromCol === columnId)
+            if (pending.length === 0) return data.items
+            return data.items.map(item => {
+              const p = pendingMoves[item.id]
+              return p ? p.lead : item
             })
-            return merged
           })
         } else {
           setLeads(data.items)
@@ -72,7 +71,6 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
         setHasMore(data.hasMore)
         setTotal(data.total)
         setPage(1)
-        initialLoad.current = false
       } else {
         setLeads(prev => [...prev, ...data.items])
         setHasMore(data.hasMore)
@@ -80,24 +78,23 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
         setPage(pageNum)
       }
     } catch (err) {
-      console.error('Column load error:', columnId, err.message)
+      console.error('[KanbanColumn]', columnId, err.message)
     } finally {
       loadingRef.current = false
       if (!silent) setLoading(false)
     }
-  }, [columnId, currentAgent, pendingMoves])
-
-  // Carga inicial
-  useEffect(() => {
-    initialLoad.current = true
-    loadLeads(1, true, false)
   }, [columnId, currentAgent?.id])
 
-  // refreshToken muda → recarrega silenciosamente (sem spinner)
+  // Monta → carrega imediatamente
+  useEffect(() => {
+    loadLeads(1, false)
+  }, [columnId, currentAgent?.id])
+
+  // refreshToken muda → recarrega em background sem spinner
   useEffect(() => {
     if (refreshToken > 0) {
       kanbanCache.invalidate(columnId)
-      loadLeads(1, true, true)
+      loadLeads(1, true)
     }
   }, [refreshToken])
 

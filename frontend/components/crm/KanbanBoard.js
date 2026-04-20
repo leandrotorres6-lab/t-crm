@@ -64,16 +64,15 @@ export default function KanbanBoard() {
     refreshCounts()
   }, [refreshCounts])
 
-  // Carrega leads primeiro, depois as outras colunas em sequência
+  // Carrega todas as colunas simultaneamente — backend tem mutex, não hammers o Chatwoot
   useEffect(() => {
     refreshCounts()
-    // Pré-aquece o cache das colunas em ordem de prioridade
-    const priority = ['leads', 'negociacao', 'agendado', 'aguardando_pagamento', 'pago',
-                      'aguardando_cotacao', 'lancar_venda', 'sem_retorno']
-    priority.forEach((col, i) => {
-      setTimeout(() => {
-        setColRefresh(prev => ({ ...prev, [col]: (prev[col] || 0) + 1 }))
-      }, i * 200) // 200ms entre cada coluna
+    // Dispara load de todas as colunas de uma vez
+    // O backend responde do cache (30s TTL) após a primeira chamada
+    setColRefresh(prev => {
+      const next = { ...prev }
+      ALL_COLUMNS.forEach(col => { next[col] = (prev[col] || 0) + 1 })
+      return next
     })
   }, [])
 
