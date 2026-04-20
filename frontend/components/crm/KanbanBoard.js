@@ -22,6 +22,18 @@ const COL_COLORS = {
   pago:'#22c55e', sem_retorno:'#6b7280'
 }
 
+function UnreadBadge({ unreadCounts }) {
+  const total = Object.values(unreadCounts || {}).reduce((a, b) => a + b, 0)
+  if (total === 0) return null
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold animate-pulse"
+      style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#f87171' }}>
+      <div className="w-2 h-2 rounded-full bg-red-500" />
+      {total} não lida{total !== 1 ? 's' : ''}
+    </div>
+  )
+}
+
 export default function KanbanBoard() {
   const { unreadCounts } = useApp()
   const [columnCounts, setColumnCounts] = useState({})
