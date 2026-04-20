@@ -22,9 +22,17 @@ let targetInboxId = null
 if (!CHATWOOT_READY) console.log('Modo mock — configure backend/.env')
 
 // ─── Socket.io ───────────────────────────────────────────────────────────────
-const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } })
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  pingTimeout: 20000,
+  pingInterval: 10000,  // ping a cada 10s para manter conexão viva
+  transports: ['websocket', 'polling'],
+})
 io.on('connection', s => {
-  s.on('disconnect', () => {})
+  console.log(`[Socket] Cliente conectado: ${s.id} (total: ${io.engine.clientsCount})`)
+  s.on('disconnect', (reason) => {
+    console.log(`[Socket] Desconectado: ${s.id} (${reason})`)
+  })
 })
 
 app.use(cors())

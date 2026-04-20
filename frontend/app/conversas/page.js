@@ -1,5 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
+
+// Cache em memória — persiste enquanto a aba do browser estiver aberta
+const _inboxCache = { data: null, ts: 0, TTL: 90 * 1000 }
 import MainLayout from '../../components/layout/MainLayout'
 import ChatPanel from '../../components/crm/ChatPanel'
 import ScheduleModal from '../../components/crm/ScheduleModal'
@@ -115,18 +118,27 @@ function ConversasList() {
   const [search, setSearch] = useState('')
   const { selectedLead, setSelectedLead, unreadCounts, currentAgent } = useApp()
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    // Usa cache se disponível e não expirado
+    if (!force && _inboxCache.data && Date.now() - _inboxCache.ts < _inboxCache.TTL) {
+      setAllLeads(_inboxCache.data)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const data = await api.getInbox(currentAgent?.id, currentAgent?.role)
-      setAllLeads(data.conversations || [])
+      const convs = data.conversations || []
+      _inboxCache.data = convs
+      _inboxCache.ts = Date.now()
+      setAllLeads(convs)
     } catch (e) {
       console.error('inbox load error:', e)
-      setAllLeads([])
+      if (_inboxCache.data) setAllLeads(_inboxCache.data) // usa cache mesmo expirado em caso de erro
     } finally {
       setLoading(false)
     }
-  }, [currentAgent])
+  }, [currentAgent?.id])
 
   useEffect(() => { load() }, [currentAgent?.id])
 
@@ -141,7 +153,9 @@ function ConversasList() {
         lastMessage: message.content || prev[idx].lastMessage,
         unreadCount: (prev[idx].unreadCount || 0) + 1,
       }
-      return [card, ...prev.filter((_, i) => i !== idx)]
+      const updated = [card, ...prev.filter((_, i) => i !== idx)]
+      _inboxCache.data = updated  // atualiza cache em memória
+      return updated
     })
   })
 
@@ -179,7 +193,7 @@ function ConversasList() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-[var(--text-primary)]">Conversas</h2>
           <button onClick={load} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} onClick={() => { _inboxCache.ts = 0; load(true) }} />
           </button>
         </div>
 

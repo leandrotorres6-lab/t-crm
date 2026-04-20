@@ -1,12 +1,12 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useApp } from '../../contexts/AppContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
-  LayoutDashboard, KanbanSquare, Calendar, Users, MessageCircle, Menu, X,
-  Sun, Moon, DollarSign, LogOut, Shield, User
+  LayoutDashboard, KanbanSquare, Calendar, Users, X,
+  Sun, Moon, DollarSign, LogOut, Shield, User, MessageCircle, Menu
 } from 'lucide-react'
 
 const NAV = [
@@ -18,18 +18,23 @@ const NAV = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
 ]
 
-export default function MobileNav() {
-  const [open, setOpen] = useState(false)
+function getRoleLabel(agent) {
+  const name = (agent?.name || '').toLowerCase()
+  if (name.includes('safira')) return 'Backoffice'
+  return agent?.role === 'supervisor' ? 'Supervisor' : 'Vendedor'
+}
+
+export default function MobileNav({ onMenuOpen, onMenuClose, menuOpen }) {
   const pathname = usePathname()
-  const { currentAgent, logout } = useApp()
+  const router = useRouter()
+  const { currentAgent, logout, setSelectedLead } = useApp()
   const { theme, toggleTheme } = useTheme()
   const drawerRef = useRef(null)
 
-  // Fecha ao clicar fora
   useEffect(() => {
-    if (!open) return
+    if (!menuOpen) return
     const fn = (e) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target)) setOpen(false)
+      if (drawerRef.current && !drawerRef.current.contains(e.target)) onMenuClose?.()
     }
     document.addEventListener('mousedown', fn)
     document.addEventListener('touchstart', fn)
@@ -37,16 +42,21 @@ export default function MobileNav() {
       document.removeEventListener('mousedown', fn)
       document.removeEventListener('touchstart', fn)
     }
-  }, [open])
+  }, [menuOpen, onMenuClose])
 
-  const currentPage = NAV.find(n => pathname === n.href || (n.href === '/crm' && pathname.startsWith('/crm')))
+  const currentPage = NAV.find(n => pathname === n.href || pathname.startsWith(n.href + '/'))
+
+  const handleNav = (href) => {
+    onMenuClose?.()
+    setSelectedLead(null)
+    router.push(href)
+  }
 
   return (
     <>
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 h-14 flex-shrink-0 border-b border-[var(--border)]"
         style={{ backgroundColor: 'var(--sidebar-bg)' }}>
-        {/* Logo + Nome */}
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
             <span className="text-white font-black text-sm">T</span>
@@ -58,30 +68,26 @@ export default function MobileNav() {
             )}
           </div>
         </div>
-
-        {/* Hamburger */}
-        <button
-          onClick={() => setOpen(true)}
-          className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all"
-        >
+        <button onClick={onMenuOpen}
+          className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
           <Menu size={22} />
         </button>
       </div>
 
       {/* Overlay */}
-      {open && (
-        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onMenuClose} />
       )}
 
-      {/* Drawer */}
+      {/* Drawer lateral */}
       <div
         ref={drawerRef}
         className={`fixed top-0 right-0 bottom-0 z-50 w-72 flex flex-col transition-transform duration-300 ease-in-out ${
-          open ? 'translate-x-0' : 'translate-x-full'
+          menuOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderLeft: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        {/* Header do drawer */}
+        style={{ backgroundColor: 'var(--sidebar-bg)', borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+
+        {/* Header drawer */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center">
@@ -89,8 +95,8 @@ export default function MobileNav() {
             </div>
             <span className="text-white font-bold">T-CRM</span>
           </div>
-          <button onClick={() => setOpen(false)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-white/5 transition-all">
+          <button onClick={onMenuClose}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-white/5">
             <X size={18} />
           </button>
         </div>
@@ -98,32 +104,29 @@ export default function MobileNav() {
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {NAV.map(({ href, icon: Icon, label }) => {
-            const active = pathname === href || (href === '/crm' && pathname.startsWith('/crm'))
+            const active = pathname === href || pathname.startsWith(href + '/')
             return (
-              <Link key={href} href={href} onClick={() => setOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
+              <button key={href} onClick={() => handleNav(href)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left"
                 style={active
                   ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#60a5fa' }
-                  : { color: '#64748b' }
-                }>
+                  : { color: '#64748b' }}>
                 <Icon size={20} className="flex-shrink-0" />
                 <span className="font-medium">{label}</span>
                 {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
-              </Link>
+              </button>
             )
           })}
         </nav>
 
         {/* Footer */}
         <div className="px-3 py-4 border-t border-white/5 space-y-2">
-          {/* Tema */}
           <button onClick={toggleTheme}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             <span className="text-sm">{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>
           </button>
 
-          {/* Agente logado */}
           {currentAgent && (
             <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
               style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
@@ -132,18 +135,11 @@ export default function MobileNav() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-300 truncate">{currentAgent.name}</p>
-                <div className="flex items-center gap-1 mt-0.5">
-                  {currentAgent.role === 'supervisor'
-                    ? <Shield size={10} className="text-blue-400" />
-                    : <User size={10} className="text-emerald-400" />
-                  }
-                  <span className="text-xs capitalize"
-                    style={{ color: currentAgent.role === 'supervisor' ? '#60a5fa' : '#34d399' }}>
-                    {currentAgent.role}
-                  </span>
-                </div>
+                <p className="text-xs capitalize" style={{ color: currentAgent.role === 'supervisor' ? '#60a5fa' : '#34d399' }}>
+                  {getRoleLabel(currentAgent)}
+                </p>
               </div>
-              <button onClick={() => { logout(); setOpen(false) }}
+              <button onClick={() => { logout(); onMenuClose?.() }}
                 className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors">
                 <LogOut size={16} />
               </button>
