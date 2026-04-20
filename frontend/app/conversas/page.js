@@ -1,8 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-// Cache em memória — persiste enquanto a aba do browser estiver aberta
-const _inboxCache = { data: null, ts: 0, TTL: 90 * 1000 }
+import { persistentCache } from '../../lib/persistentCache'
+const INBOX_CACHE_KEY = 'inbox'
 import MainLayout from '../../components/layout/MainLayout'
 import ChatPanel from '../../components/crm/ChatPanel'
 import ScheduleModal from '../../components/crm/ScheduleModal'
@@ -119,22 +119,25 @@ function ConversasList() {
   const { selectedLead, setSelectedLead, unreadCounts, currentAgent } = useApp()
 
   const load = useCallback(async (force = false) => {
-    // Usa cache se disponível e não expirado
-    if (!force && _inboxCache.data && Date.now() - _inboxCache.ts < _inboxCache.TTL) {
-      setAllLeads(_inboxCache.data)
+    // Mostra cache imediatamente (pode ser de sessão anterior)
+    const cached = persistentCache.get(INBOX_CACHE_KEY)
+    if (cached?.data) {
+      setAllLeads(cached.data)
       setLoading(false)
-      return
+      // Se cache ainda fresco e não é força, não busca de novo
+      if (!force && !persistentCache.isStale(INBOX_CACHE_KEY, 60000)) return
+    } else {
+      setLoading(true)
     }
-    setLoading(true)
+
+    // Busca em background (silencioso se já tem cache)
     try {
       const data = await api.getInbox(currentAgent?.id, currentAgent?.role)
       const convs = data.conversations || []
-      _inboxCache.data = convs
-      _inboxCache.ts = Date.now()
+      persistentCache.set(INBOX_CACHE_KEY, convs)
       setAllLeads(convs)
     } catch (e) {
       console.error('inbox load error:', e)
-      if (_inboxCache.data) setAllLeads(_inboxCache.data) // usa cache mesmo expirado em caso de erro
     } finally {
       setLoading(false)
     }
@@ -154,7 +157,7 @@ function ConversasList() {
         unreadCount: (prev[idx].unreadCount || 0) + 1,
       }
       const updated = [card, ...prev.filter((_, i) => i !== idx)]
-      _inboxCache.data = updated  // atualiza cache em memória
+      persistentCache.set(INBOX_CACHE_KEY, updated)  // persiste
       return updated
     })
   })
@@ -193,7 +196,7 @@ function ConversasList() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-[var(--text-primary)]">Conversas</h2>
           <button onClick={load} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} onClick={() => { _inboxCache.ts = 0; load(true) }} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} onClick={() => load(true)} />
           </button>
         </div>
 

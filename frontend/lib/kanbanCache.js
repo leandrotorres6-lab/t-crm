@@ -1,21 +1,17 @@
-// Cache de dados do kanban no lado do cliente
-// Persiste enquanto a aba do navegador estiver aberta (module-level = singleton)
-// Evita refetch desnecessário ao navegar entre menus
+// Cache de dados do kanban — persiste entre sessões via localStorage
+import { persistentCache } from './persistentCache'
 
-const _cache = {
-  columns: {},   // { 'leads_1': { data, ts } }
-  TTL: 120 * 1000, // 2 minutos
-}
+const TTL = 120 * 1000 // 2 minutos
 
 export const kanbanCache = {
-  key(columnId, page) { return `${columnId}_${page}` },
+  key(columnId, page) { return `kanban_${columnId}_${page}` },
 
   get(columnId, page = 1) {
     const k = this.key(columnId, page)
-    const entry = _cache.columns[k]
+    const entry = persistentCache.get(k)
     if (!entry) return null
-    if (Date.now() - entry.ts > _cache.TTL) {
-      delete _cache.columns[k]
+    if (Date.now() - entry.ts > TTL) {
+      persistentCache.invalidate(k)
       return null
     }
     return entry.data
@@ -23,18 +19,15 @@ export const kanbanCache = {
 
   set(columnId, page, data) {
     const k = this.key(columnId, page)
-    _cache.columns[k] = { data, ts: Date.now() }
+    persistentCache.set(k, data)
   },
 
-  // Invalida apenas uma coluna (ao mover lead de/para ela)
   invalidate(columnId) {
-    Object.keys(_cache.columns).forEach(k => {
-      if (k.startsWith(columnId + '_')) delete _cache.columns[k]
-    })
+    // Invalida páginas 1-3 da coluna
+    for (let p = 1; p <= 3; p++) persistentCache.invalidate(this.key(columnId, p))
   },
 
-  // Invalida tudo (refresh manual)
   invalidateAll() {
-    _cache.columns = {}
+    persistentCache.invalidateAll()
   },
 }
