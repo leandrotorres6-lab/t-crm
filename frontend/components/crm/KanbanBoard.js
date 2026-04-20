@@ -64,7 +64,18 @@ export default function KanbanBoard() {
     refreshCounts()
   }, [refreshCounts])
 
-  useEffect(() => { refreshCounts() }, [])
+  // Carrega leads primeiro, depois as outras colunas em sequência
+  useEffect(() => {
+    refreshCounts()
+    // Pré-aquece o cache das colunas em ordem de prioridade
+    const priority = ['leads', 'negociacao', 'agendado', 'aguardando_pagamento', 'pago',
+                      'aguardando_cotacao', 'lancar_venda', 'sem_retorno']
+    priority.forEach((col, i) => {
+      setTimeout(() => {
+        setColRefresh(prev => ({ ...prev, [col]: (prev[col] || 0) + 1 }))
+      }, i * 200) // 200ms entre cada coluna
+    })
+  }, [])
 
   useSocket('new_conversation', (lead) => {
     setColumnCounts(prev => ({ ...prev, leads: (prev.leads || 0) + 1 }))

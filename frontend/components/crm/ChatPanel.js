@@ -4,7 +4,7 @@ import { useApp } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
 import { useSocket } from '../../lib/socket'
 import {
-  Send, Loader2, Phone, Smile, Wifi, WifiOff, Tag, ChevronDown,
+  Send, Loader2, MessageCircle, Smile, Wifi, WifiOff, Tag, ChevronDown,
   Check, ArrowRight, Mic, MicOff, Paperclip, ImageIcon, X,
   Play, Pause, Download, FileText, ChevronUp, MoreVertical,
   UserCheck, Plus, Trash2, Volume2
@@ -999,18 +999,40 @@ export default function ChatPanel() {
 
   if (!selectedLead) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 bg-[var(--bg-secondary)]">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
-          <Send size={24} className="text-blue-400" />
+      <div className="h-full flex flex-col items-center justify-center gap-4"
+        style={{ backgroundColor: 'var(--bg-secondary)' }}>
+        {/* Ícone animado */}
+        <div className="relative">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: '2px solid rgba(59,130,246,0.15)' }}>
+            <MessageCircle size={36} className="text-blue-400" style={{ opacity: 0.7 }} />
+          </div>
+          {/* Pulsing ring */}
+          <div className="absolute inset-0 rounded-3xl animate-ping"
+            style={{ border: '2px solid rgba(59,130,246,0.2)', animationDuration: '2s' }} />
         </div>
-        <p className="text-sm font-semibold text-[var(--text-primary)]">Nenhuma conversa aberta</p>
-        <p className="text-xs text-[var(--text-muted)]">Clique em um card do kanban</p>
+
+        <div className="text-center px-6">
+          <p className="text-base font-semibold text-[var(--text-primary)] mb-1">
+            Nenhuma conversa selecionada
+          </p>
+          <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+            Clique em qualquer card do kanban<br/>para abrir a conversa aqui
+          </p>
+        </div>
+
+        {/* Dica visual */}
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs"
+          style={{ backgroundColor: 'rgba(59,130,246,0.06)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.12)' }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          Aguardando seleção
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full flex flex-col bg-[var(--bg-secondary)] relative">
+    <div className="h-full flex flex-col bg-[var(--bg-secondary)] relative animate-slide-in-right">
       {/* Toast */}
       {moveToast && (
         <div className="absolute top-3 left-3 right-3 z-50 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium animate-slide-up shadow-lg"
@@ -1046,8 +1068,10 @@ export default function ChatPanel() {
             style={{ backgroundColor: isLive ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)', color: isLive ? '#10b981' : '#6b7280' }}>
             {isLive ? <><Wifi size={10} /><span>Live</span></> : <><WifiOff size={10} /><span>Off</span></>}
           </div>
-          <button className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors">
-            <Phone size={15} />
+          <button onClick={() => setSelectedLead(null)}
+            title="Fechar conversa"
+            className="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-400 text-[var(--text-muted)] transition-all">
+            <X size={15} />
           </button>
         </div>
       </div>
