@@ -195,9 +195,9 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
   const displayTotal = Math.max(0, total + incomingLeads.length - hiddenIds.size)
 
   return (
-    <div className="kanban-column flex-shrink-0 flex flex-col rounded-xl transition-all duration-200"
+    <div className="kanban-column flex flex-col rounded-xl transition-all duration-200 w-full md:flex-shrink-0"
       style={{
-        width: '280px', minWidth: '280px', maxHeight: 'calc(100vh - 80px)',
+        width: 'min(280px, 100vw)', minWidth: '0', maxWidth: '100%', maxHeight: 'calc(100vh - 80px)',
         backgroundColor: dragOver ? color + '08' : 'var(--bg-secondary)',
         border: `1px solid ${dragOver ? color : 'var(--border)'}`,
       }}

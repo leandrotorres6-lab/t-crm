@@ -118,37 +118,40 @@ function ConversasList() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      // Carrega todas as colunas
-      const ALL_COLUMNS = ['leads','negociacao','aguardando_cotacao','agendado','lancar_venda','aguardando_pagamento','pago','sem_retorno']
-      const results = await Promise.all(
-        ALL_COLUMNS.map(col => api.getColumnLeads(col, 1, currentAgent?.id, currentAgent?.role)
-          .then(d => d.items || []).catch(() => []))
-      )
-      const merged = results.flat()
-      // Ordena por não lidas primeiro, depois por data
-      merged.sort((a, b) => {
-        const ua = unreadCounts[a.id] || a.unreadCount || 0
-        const ub = unreadCounts[b.id] || b.unreadCount || 0
-        if (ua !== ub) return ub - ua
-        return new Date(b.createdAt) - new Date(a.createdAt)
-      })
-      setAllLeads(merged)
+      const data = await api.getInbox(currentAgent?.id, currentAgent?.role)
+      setAllLeads(data.conversations || [])
+    } catch (e) {
+      console.error('inbox load error:', e)
+      setAllLeads([])
     } finally {
       setLoading(false)
     }
-  }, [currentAgent, unreadCounts])
+  }, [currentAgent])
 
   useEffect(() => { load() }, [currentAgent?.id])
 
-  // Sobe lead para o topo quando chega mensagem nova
+  // Sobe lead para o topo e incrementa badge quando chega mensagem nova
   useSocket('new_message', ({ conversationId, message }) => {
     if (message?.sender !== 'lead') return
     setAllLeads(prev => {
       const idx = prev.findIndex(l => l.id === String(conversationId))
       if (idx === -1) return prev
-      const card = { ...prev[idx], lastMessage: message.content || prev[idx].lastMessage }
+      const card = {
+        ...prev[idx],
+        lastMessage: message.content || prev[idx].lastMessage,
+        unreadCount: (prev[idx].unreadCount || 0) + 1,
+      }
       return [card, ...prev.filter((_, i) => i !== idx)]
     })
+  })
+
+  // Zera badge quando usuário abre a conversa
+  useSocket('unread_update', ({ conversationId, count }) => {
+    if (count === 0) {
+      setAllLeads(prev => prev.map(l =>
+        l.id === String(conversationId) ? { ...l, unreadCount: 0 } : l
+      ))
+    }
   })
 
   // Nova conversa → adiciona no topo

@@ -412,6 +412,20 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
   useEffect(() => { setLabels(initialLabels || []) }, [JSON.stringify(initialLabels)])
 
   const hasHumano = labels.some(l => l.toLowerCase() === 'humano')
+  const hasCancelado = labels.some(l => l.toLowerCase() === 'cancelado')
+  const [togglingCancelado, setTogglingCancelado] = useState(false)
+
+  const toggleCancelado = async () => {
+    setTogglingCancelado(true)
+    try {
+      const updated = hasCancelado
+        ? labels.filter(l => l.toLowerCase() !== 'cancelado')
+        : [...labels, 'cancelado']
+      setLabels(updated)
+      await api.setConversationLabels(conversationId, updated)
+    } catch { setLabels(labels) }
+    finally { setTogglingCancelado(false) }
+  }
   const curCol = ALL_COLUMNS.find(c => c.id === currentColumn) || ALL_COLUMNS[0]
 
   const toggleHumano = async () => {
@@ -476,6 +490,20 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
             hasHumano
               ? <><span>🤝</span> humano<span style={{ opacity: 0.6, fontSize: '9px' }}> · bot off</span></>
               : <><span style={{ opacity: 0.4 }}>🤖</span> humano</>
+          )}
+        </button>
+
+        {/* Toggle cancelado — contabiliza no dashboard, remove do kanban */}
+        <button onClick={toggleCancelado} disabled={togglingCancelado}
+          title={hasCancelado ? 'Clique para desmarcar plano cancelado' : 'Marcar plano como cancelado'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          style={hasCancelado
+            ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }
+            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+          {togglingCancelado ? '...' : (
+            hasCancelado
+              ? <><span>❌</span> Plano cancelado</>
+              : <><span style={{ opacity: 0.4 }}>❌</span> Plano cancelado</>
           )}
         </button>
       </div>

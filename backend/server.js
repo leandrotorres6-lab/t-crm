@@ -104,12 +104,13 @@ async function getAllConversations() {
 
   const all = []
   try {
-  for (let page = 1; page <= 5; page++) {
+  for (let page = 1; page <= 20; page++) {
     const batch = await cw.getConversations({ page, status: 'open', inboxId: targetInboxId || undefined })
     if (!batch.length) break
     all.push(...batch)
-    if (batch.length < 25) break
+    if (batch.length < 25) break  // última página
   }
+  console.log(`📋 Total buscado do Chatwoot: ${all.length} conversas`)
   // NÃO carrega resolvidas automaticamente — só aparecem em histórico de contato
   // Resolvidas no kanban poluem com conversas internas, notificações, etc.
 
@@ -567,6 +568,29 @@ app.get('/api/contacts/:contactId/conversations', async (req, res) => {
     const filtered = targetInboxId ? raw.filter(c => c.inbox_id === targetInboxId) : raw
     const sorted = filtered.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0))
     res.json({ conversations: sorted.map(cw.mapConvSummary) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── INBOX: todas as conversas de uma vez ────────────────────────────────────
+app.get('/api/inbox', async (req, res) => {
+  try {
+    const { agentId, role } = req.query
+    let all = await getAllConversations()
+
+    // Filtro por vendedor
+    if (role === 'vendedor' && agentId) {
+      all = all.filter(c => c.assignedTo === agentId)
+    }
+
+    // Ordena: não lidas primeiro, depois por data mais recente
+    all.sort((a, b) => {
+      const ua = a.unreadCount || 0
+      const ub = b.unreadCount || 0
+      if (ua !== ub) return ub - ua
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
+
+    res.json({ conversations: all, total: all.length })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

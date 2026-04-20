@@ -11,12 +11,12 @@ import {
 import { useState } from 'react'
 
 const NAV = [
-  { href: '/conversas', icon: MessageCircle, label: 'Conversas' },
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/crm', icon: KanbanSquare, label: 'CRM' },
+  { href: '/conversas', icon: MessageCircle, label: 'Conversas' },
+  { href: '/contatos', icon: Users, label: 'Contatos' },
   { href: '/agendamento', icon: Calendar, label: 'Agendamento' },
   { href: '/aguardando-pagamento', icon: DollarSign, label: 'Pagamentos' },
-  { href: '/contatos', icon: Users, label: 'Contatos' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
 ]
 
 const STATUS_COLORS = { online: '#10b981', ocupado: '#f59e0b', offline: '#6b7280' }

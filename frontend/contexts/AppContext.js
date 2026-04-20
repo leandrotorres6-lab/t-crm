@@ -56,12 +56,17 @@ export function AppProvider({ children }) {
     setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: 1 }))
   })
 
-  // Nova mensagem recebida → sobe o card para o topo da coluna dele
+  // Nova mensagem recebida → sobe card, incrementa badge
   useSocket('new_message', ({ conversationId, message }) => {
-    // Ignora mensagens enviadas pelo agente (só cliente)
-    if (message?.sender !== 'lead') return
     const id = String(conversationId)
-    // Dispara evento global para a coluna reordenar
+    // Só mensagens do cliente
+    if (message?.sender !== 'lead') return
+    // Incrementa contador de não lidas localmente (backup se unread_update demorar)
+    setUnreadCounts(prev => ({
+      ...prev,
+      [id]: (prev[id] || 0) + 1
+    }))
+    // Sobe card no kanban e nas conversas
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:new-message', {
         detail: { conversationId: id, content: message?.content || '' }

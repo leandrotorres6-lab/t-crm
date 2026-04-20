@@ -40,6 +40,7 @@ export const api = {
   getPagamentos: () => fetchJSON('/pagamentos'),
 
   getDashboard: () => fetchJSON('/dashboard'),
+  getInbox: (agentId, role) => fetchJSON(`/inbox${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),
   login: (agentId, password) => fetchJSON('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ agentId, password })
