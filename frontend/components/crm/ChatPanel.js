@@ -531,7 +531,7 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
 // Labels que representam posição no kanban — não mostrar como chips avulsos
 // A única label "livre" típica é 'humano' (desativa bot) e outras personalizadas
 const KANBAN_LABEL_KEYS = new Set([
-  'lead','leads',
+  'lead','leads','bot',
   'negociacao','negociação','em_negociacao','em_negociação',
   'aguardando_cotacao','aguardando_cotação','cotacao','cotação','aguardando-cotacao',
   'aguardando_documentacao','aguardando_documentação','documentacao',

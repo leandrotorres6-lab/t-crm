@@ -222,9 +222,12 @@ function mapConversation(conv, columnOverride) {
   const rawLabels = conv.labels || []
   // Labels visíveis: excluir crm_ e labels de posição kanban (leads, negociacao, etc.)
   // Manter apenas labels funcionais como 'humano', 'urgente', 'vip', etc.
+  // Labels internas do sistema que não devem aparecer como chips visuais
+  const INTERNAL_LABELS = new Set(['bot', 'crm', 'sistema', 'auto'])
   const chatwootLabels = rawLabels.filter(l => {
     if (l.startsWith('crm_')) return false
     if (LABEL_TO_COLUMN[l.toLowerCase().trim()]) return false
+    if (INTERNAL_LABELS.has(l.toLowerCase().trim())) return false
     return true
   })
   const column = columnOverride ?? resolveColumn(rawLabels)

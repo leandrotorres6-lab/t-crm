@@ -3,6 +3,20 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { Loader2, Shield, User, Building2, Eye, EyeOff, ArrowLeft } from 'lucide-react'
 
+function getRoleLabel(agent) {
+  const name = (agent.name || '').toLowerCase()
+  if (name.includes('safira')) return 'Backoffice'
+  if (agent.role === 'supervisor') return 'Supervisor'
+  return 'Vendedor'
+}
+
+function getRoleColor(agent) {
+  const name = (agent.name || '').toLowerCase()
+  if (name.includes('safira')) return '#f59e0b'
+  if (agent.role === 'supervisor') return '#60a5fa'
+  return '#34d399'
+}
+
 function Avatar({ agent, size = 48 }) {
   const [imgError, setImgError] = useState(false)
   const initials = agent.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -103,7 +117,7 @@ export default function AgentLogin({ onLogin }) {
               <div className="flex-1 min-w-0">
                 <p className="text-base font-bold text-[var(--text-primary)]">{selected.name}</p>
                 <div className="flex items-center gap-1 mt-0.5"
-                  style={{ color: selected.role === 'supervisor' ? '#60a5fa' : '#34d399' }}>
+                  style={{ color: getRoleColor(selected) }}>
                   {selected.role === 'supervisor' ? <Shield size={11} /> : <User size={11} />}
                   <span className="text-xs font-medium capitalize">{selected.role}</span>
                 </div>
@@ -160,7 +174,7 @@ export default function AgentLogin({ onLogin }) {
                 <div>
                   <div className="flex items-center gap-2 mb-2 px-1">
                     <Shield size={12} className="text-blue-400" />
-                    <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Administradores</span>
+                    <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Supervisores</span>
                   </div>
                   <div className="rounded-2xl overflow-hidden"
                     style={{ border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)' }}>
@@ -171,7 +185,7 @@ export default function AgentLogin({ onLogin }) {
                         <Avatar agent={agent} size={44} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-[var(--text-primary)]">{agent.name}</p>
-                          <p className="text-xs text-[var(--text-muted)] truncate">{agent.email}</p>
+                          <p className="text-xs truncate" style={{ color: getRoleColor(agent) }}>{getRoleLabel(agent)}</p>
                         </div>
                         <ArrowLeft size={14} className="rotate-180 text-[var(--text-muted)]" />
                       </button>
@@ -195,7 +209,7 @@ export default function AgentLogin({ onLogin }) {
                         <Avatar agent={agent} size={44} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-[var(--text-primary)]">{agent.name}</p>
-                          <p className="text-xs text-[var(--text-muted)] truncate">{agent.email}</p>
+                          <p className="text-xs truncate" style={{ color: getRoleColor(agent) }}>{getRoleLabel(agent)}</p>
                         </div>
                         <ArrowLeft size={14} className="rotate-180 text-[var(--text-muted)]" />
                       </button>

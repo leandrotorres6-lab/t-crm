@@ -25,7 +25,7 @@ const COLUMNS = [
 
 // Labels de posição kanban - não exibir como chips avulsos no card
 const KANBAN_CARD_LABELS = new Set([
-  'lead','leads',
+  'lead','leads','bot',
   'negociacao','negociação','em_negociacao','em_negociação',
   'aguardando_cotacao','aguardando_cotação','cotacao','cotação',
   'aguardando_documentacao','aguardando_documentação','documentacao',
