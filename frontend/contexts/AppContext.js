@@ -34,6 +34,12 @@ export function AppProvider({ children }) {
   // Movimento otimista
   const applyPendingMove = useCallback((lead, toCol) => {
     setPendingMoves(prev => ({ ...prev, [lead.id]: { fromCol: lead.column, toCol, lead: { ...lead, column: toCol } } }))
+    // Invalida cache das duas colunas para forçar reload limpo depois
+    try {
+      const { kanbanCache } = require('../lib/kanbanCache')
+      kanbanCache.invalidate(lead.column)
+      kanbanCache.invalidate(toCol)
+    } catch {}
   }, [])
 
   const clearPendingMove = useCallback((leadId) => {

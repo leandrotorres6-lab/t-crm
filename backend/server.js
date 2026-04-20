@@ -72,9 +72,19 @@ async function initInboxFilter() {
 // ─── Cache de conversas ──────────────────────────────────────────────────────
 const ALL_COLUMNS = ['leads','negociacao','aguardando_cotacao','agendado','lancar_venda','aguardando_pagamento','pago','sem_retorno']
 
+// Mutex: evita múltiplas chamadas simultâneas ao Chatwoot
+let fetchingConversations = null
+
 async function getAllConversations() {
   const cached = store.getCache()
   if (cached) return Object.values(cached)
+
+  // Se já tem um fetch em andamento, espera ele terminar
+  if (fetchingConversations) {
+    await fetchingConversations
+    const cached2 = store.getCache()
+    if (cached2) return Object.values(cached2)
+  }
 
   if (!CHATWOOT_READY) {
     const { leads } = require('./data/mockData')
@@ -88,7 +98,12 @@ async function getAllConversations() {
     return Object.values(map)
   }
 
+  // Inicia o fetch com mutex
+  let resolveFetch
+  fetchingConversations = new Promise(r => { resolveFetch = r })
+
   const all = []
+  try {
   for (let page = 1; page <= 5; page++) {
     const batch = await cw.getConversations({ page, status: 'open', inboxId: targetInboxId || undefined })
     if (!batch.length) break
@@ -145,7 +160,11 @@ async function getAllConversations() {
     map[String(conv.id)] = mapped
   })
   store.setCache(map)
-  return Object.values(map)
+  } finally {
+    fetchingConversations = null
+    if (resolveFetch) resolveFetch()
+  }
+  return Object.values(store.getCache())
 }
 
 // ─── STATUS ──────────────────────────────────────────────────────────────────
@@ -218,17 +237,30 @@ app.get('/api/kanban/:column', async (req, res) => {
   try {
     const { column } = req.params
     const { page = 1, limit = 5, agentId, role } = req.query
-    let all = await getAllConversations()
-    let filtered = all.filter(c => c.column === column)
+    const pg = parseInt(page), lm = parseInt(limit)
 
-    // Vendedor só vê as atribuídas a ele
+    // Retorna do cache imediatamente se disponível
+    let all = store.getCache()
+    if (all) {
+      all = Object.values(all)
+    } else {
+      // Cache expirado: inicia fetch em background e responde vazio (frontend vai retentar)
+      if (!fetchingConversations) {
+        getAllConversations().catch(e => console.warn('bg fetch error:', e.message))
+      }
+      // Responde com dados do store local enquanto o cache não está pronto
+      // Isso evita o spinner longo
+      all = []
+    }
+
+    let filtered = all.filter(c => c.column === column)
     if (role === 'vendedor' && agentId) {
       filtered = filtered.filter(c => c.assignedTo === agentId)
     }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit)
-    const items = filtered.slice(offset, offset + parseInt(limit))
-    res.json({ items, total: filtered.length, page: parseInt(page), hasMore: offset + items.length < filtered.length })
+    const offset = (pg - 1) * lm
+    const items = filtered.slice(offset, offset + lm)
+    res.json({ items, total: filtered.length, page: pg, hasMore: offset + items.length < filtered.length, cacheReady: !!store.getCache() })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -642,5 +674,17 @@ server.listen(PORT, async () => {
   console.log('\n📌 Webhook URL para configurar no Chatwoot:')
   console.log('   http://SEU-IP:' + PORT + '/api/chatwoot/webhook')
   console.log('\n🔍 Diagnóstico: http://localhost:' + PORT + '/api/debug')
+  // Pré-aquece o cache assim que o servidor sobe
+  console.log('⏳ Pré-carregando conversas...')
+  getAllConversations()
+    .then(all => console.log(`✅ Cache pronto: ${all.length} conversas`))
+    .catch(e => console.warn('⚠️  Pré-carga falhou:', e.message))
+
+  // Mantém o cache sempre aquecido — atualiza a cada 50s
+  // (backend TTL é 60s, então sempre haverá cache fresco)
+  setInterval(() => {
+    store.invalidateCache()
+    getAllConversations().catch(e => console.warn('Cache refresh error:', e.message))
+  }, 50 * 1000)
   console.log('')
 })

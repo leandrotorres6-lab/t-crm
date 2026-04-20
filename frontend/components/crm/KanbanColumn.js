@@ -30,14 +30,15 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
   const initialLoad = useRef(true)
   const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove } = useApp()
 
+  const retryRef = useRef(null)
+
   const loadLeads = useCallback(async (pageNum = 1, silent = false) => {
-    if (loadingRef.current && !silent) return
-    if (loadingRef.current && silent) return // não duplica
+    if (loadingRef.current) return
     loadingRef.current = true
     if (!silent) setLoading(true)
 
     try {
-      // Tenta cache primeiro (instantâneo)
+      // Cache local do frontend (instantâneo)
       if (pageNum === 1) {
         const cached = kanbanCache.get(columnId, 1)
         if (cached) {
@@ -54,12 +55,20 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
       const data = await api.getColumnLeads(columnId, pageNum, currentAgent?.id, currentAgent?.role)
 
       if (pageNum === 1) {
+        // Se o backend ainda está buscando do Chatwoot (cacheReady=false),
+        // agenda retry em 2s para pegar dados frescos
+        if (data.cacheReady === false && data.items.length === 0) {
+          loadingRef.current = false
+          if (!silent) setLoading(false)
+          clearTimeout(retryRef.current)
+          retryRef.current = setTimeout(() => loadLeads(1, true), 2000)
+          return
+        }
+
         kanbanCache.set(columnId, 1, data)
         if (silent) {
-          // Merge silencioso: preserva cards em movimento pendente
           setLeads(prev => {
-            const pending = Object.values(pendingMoves).filter(m => m.toCol === columnId || m.fromCol === columnId)
-            if (pending.length === 0) return data.items
+            if (!pendingMoves || Object.keys(pendingMoves).length === 0) return data.items
             return data.items.map(item => {
               const p = pendingMoves[item.id]
               return p ? p.lead : item
@@ -79,18 +88,22 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
       }
     } catch (err) {
       console.error('[KanbanColumn]', columnId, err.message)
+      // Retry em 3s em caso de erro de rede
+      clearTimeout(retryRef.current)
+      retryRef.current = setTimeout(() => loadLeads(1, true), 3000)
     } finally {
       loadingRef.current = false
       if (!silent) setLoading(false)
     }
-  }, [columnId, currentAgent?.id])
+  }, [columnId, currentAgent?.id, pendingMoves])
 
   // Monta → carrega imediatamente
   useEffect(() => {
     loadLeads(1, false)
+    return () => clearTimeout(retryRef.current)
   }, [columnId, currentAgent?.id])
 
-  // refreshToken muda → recarrega em background sem spinner
+  // refreshToken muda → recarrega em background
   useEffect(() => {
     if (refreshToken > 0) {
       kanbanCache.invalidate(columnId)
@@ -140,10 +153,10 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
   }
 
   const color = COL_COLORS[columnId] || '#3b82f6'
-  const incomingLeads = Object.values(pendingMoves)
+  const incomingLeads = Object.values(pendingMoves || {})
     .filter(m => m.toCol === columnId && !leads.find(l => l.id === m.lead.id))
-    .map(m => m.lead)
-  const hiddenIds = new Set(Object.entries(pendingMoves).filter(([, m]) => m.fromCol === columnId).map(([id]) => id))
+    .map(m => ({ ...m.lead, column: columnId }))
+  const hiddenIds = new Set(Object.entries(pendingMoves || {}).filter(([, m]) => m.fromCol === columnId).map(([id]) => id))
   const allLeads = [...incomingLeads, ...leads.filter(l => !hiddenIds.has(l.id))]
   const displayTotal = Math.max(0, total + incomingLeads.length - hiddenIds.size)
 
@@ -168,7 +181,21 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2" style={{ scrollbarWidth: 'thin' }}>
         {allLeads.map(lead => <KanbanCard key={lead.id} lead={lead} />)}
         <div ref={bottomRef} className="h-2" />
-        {loading && <div className="flex justify-center py-2"><Loader2 size={16} className="animate-spin text-[var(--text-muted)]" /></div>}
+        {loading && allLeads.length === 0 && (
+          <div className="space-y-2">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-xl p-3 animate-pulse"
+                style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', opacity: 1 - i * 0.2 }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-lg" style={{ backgroundColor: 'var(--border)' }} />
+                  <div className="h-3 rounded-full flex-1" style={{ backgroundColor: 'var(--border)', maxWidth: '60%' }} />
+                </div>
+                <div className="h-2.5 rounded-full mb-1.5" style={{ backgroundColor: 'var(--border)', width: '80%' }} />
+                <div className="h-2.5 rounded-full" style={{ backgroundColor: 'var(--border)', width: '50%' }} />
+              </div>
+            ))}
+          </div>
+        )}
         {!loading && allLeads.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2" style={{ backgroundColor: color + '15' }}>

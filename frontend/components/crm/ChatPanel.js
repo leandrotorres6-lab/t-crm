@@ -376,6 +376,188 @@ function AgentAssigner({ conversationId, currentAssigneeName, onAssigned }) {
 }
 
 // ─── Componente: painel de etiquetas ─────────────────────────────────────────
+// ─── Barra unificada: etapa + etiquetas em um único lugar ──────────────────────
+function UnifiedBar({ conversationId, initialLabels, currentColumn, product, assigneeName, onAssigned, onMove }) {
+  const [labels, setLabels] = useState(initialLabels || [])
+  const [allLabels, setAllLabels] = useState([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [search, setSearch] = useState('')
+  const [togglingHumano, setTogglingHumano] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => { setLabels(initialLabels || []) }, [JSON.stringify(initialLabels)])
+  useEffect(() => { api.getAccountLabels().then(setAllLabels).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!showAdd) return
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) { setShowAdd(false); setSearch('') } }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [showAdd])
+
+  const hasHumano = labels.some(l => l.toLowerCase() === 'humano')
+  const freeLabels = labels.filter(l => !isKanbanLabel(l) && l.toLowerCase() !== 'humano')
+  const curCol = ALL_COLUMNS.find(c => c.id === currentColumn) || ALL_COLUMNS[0]
+
+  const toggleHumano = async () => {
+    setTogglingHumano(true)
+    try {
+      const updated = hasHumano ? labels.filter(l => l.toLowerCase() !== 'humano') : [...labels, 'humano']
+      setLabels(updated)
+      await api.setConversationLabels(conversationId, updated)
+    } catch { setLabels(labels) }
+    finally { setTogglingHumano(false) }
+  }
+
+  const removeLabel = async (label) => {
+    const updated = labels.filter(l => l !== label)
+    setLabels(updated)
+    await api.setConversationLabels(conversationId, updated).catch(console.error)
+  }
+
+  const addLabelOrMove = async (item) => {
+    setShowAdd(false); setSearch('')
+    // Se é uma coluna kanban → mover
+    if (item._isColumn) { onMove(item.id); return }
+    // Senão é etiqueta livre
+    const title = item.title || item
+    if (isKanbanLabel(title) || title.toLowerCase() === 'humano') return
+    const updated = [...new Set([...labels, title])]
+    setLabels(updated)
+    await api.setConversationLabels(conversationId, updated).catch(console.error)
+  }
+
+  // Itens do dropdown: colunas kanban + etiquetas livres
+  const dropdownItems = [
+    // Colunas kanban (exceto atual)
+    ...ALL_COLUMNS
+      .filter(c => c.id !== currentColumn && (
+        !search || c.label.toLowerCase().includes(search.toLowerCase())
+      ))
+      .map(c => ({ ...c, _isColumn: true })),
+    // Etiquetas livres do Chatwoot
+    ...allLabels.filter(l => {
+      const t = l.title || l
+      if (isKanbanLabel(t) || t.toLowerCase() === 'humano') return false
+      if (labels.some(e => e.toLowerCase() === t.toLowerCase())) return false
+      return !search || t.toLowerCase().includes(search.toLowerCase())
+    }).map(l => ({ ...l, _isColumn: false }))
+  ]
+
+  const hasKanbanItems = dropdownItems.some(i => i._isColumn)
+  const hasLabelItems = dropdownItems.some(i => !i._isColumn)
+
+  return (
+    <div className="flex-shrink-0 border-b border-[var(--border)]">
+      {/* Linha 1: etapa atual + produto + agente */}
+      <div className="flex items-center gap-2 px-4 py-2 flex-wrap">
+        {/* Etapa kanban — clicável para mover */}
+        <button onClick={() => setShowAdd(o => !o)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all hover:opacity-80"
+          style={{ backgroundColor: curCol.color + '20', color: curCol.color }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: curCol.color }} />
+          {curCol.label}
+          <ChevronDown size={10} />
+        </button>
+
+        {product && (
+          <span className="text-xs px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
+            {product}
+          </span>
+        )}
+
+        <div className="ml-auto">
+          <AgentAssigner conversationId={conversationId} currentAssigneeName={assigneeName} onAssigned={onAssigned} />
+        </div>
+      </div>
+
+      {/* Linha 2: toggle humano + etiquetas livres + botão + */}
+      <div className="flex items-center gap-1.5 px-4 pb-2 flex-wrap">
+        {/* Toggle humano */}
+        <button onClick={toggleHumano} disabled={togglingHumano}
+          title={hasHumano ? 'Reativar robô' : 'Desativar robô (atendimento humano)'}
+          className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          style={hasHumano
+            ? { backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }
+            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+          {togglingHumano ? '...' : hasHumano
+            ? <><span>🤝</span><span>humano</span><span style={{ opacity: 0.6, fontSize: '9px' }}> · bot off</span></>
+            : <><span style={{ opacity: 0.4 }}>🤖</span><span>humano</span></>
+          }
+        </button>
+
+        {/* Etiquetas livres */}
+        {freeLabels.map(label => {
+          const c = labelColor(label)
+          return (
+            <span key={label} className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium group"
+              style={{ backgroundColor: c + '18', color: c, border: `1px solid ${c}30` }}>
+              <span>{label}</span>
+              <button onClick={() => removeLabel(label)}
+                className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400">
+                <X size={9} />
+              </button>
+            </span>
+          )
+        })}
+
+        {/* Botão + para etiquetas/mover */}
+        <div className="relative" ref={ref}>
+          <button onClick={() => setShowAdd(o => !o)}
+            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-all hover:opacity-80"
+            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }}>
+            <Plus size={9} /> Etiqueta
+          </button>
+
+          {showAdd && (
+            <div className="absolute bottom-full left-0 mb-1 w-56 rounded-xl border border-[var(--border)] shadow-2xl z-50 overflow-hidden animate-slide-up"
+              style={{ backgroundColor: 'var(--bg-card)' }}>
+              <div className="p-2 border-b border-[var(--border)]">
+                <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Buscar etapa ou etiqueta..." className="input-theme text-xs py-1.5" />
+              </div>
+              <div className="max-h-52 overflow-y-auto">
+                {dropdownItems.length === 0 && (
+                  <p className="text-xs text-[var(--text-muted)] px-3 py-2 italic">Nenhuma encontrada</p>
+                )}
+                {hasKanbanItems && (
+                  <div className="px-3 py-1.5 border-b border-[var(--border)]">
+                    <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-medium">Mover para etapa</p>
+                  </div>
+                )}
+                {dropdownItems.filter(i => i._isColumn).map(col => (
+                  <button key={col.id} onClick={() => addLabelOrMove(col)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--bg-hover)] text-left transition-colors">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: col.color }} />
+                    <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{col.label}</span>
+                    <ArrowRight size={11} style={{ color: col.color, opacity: 0.6 }} />
+                  </button>
+                ))}
+                {hasLabelItems && (
+                  <div className="px-3 py-1.5 border-t border-[var(--border)]">
+                    <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-medium">Etiquetas</p>
+                  </div>
+                )}
+                {dropdownItems.filter(i => !i._isColumn).map(l => {
+                  const title = l.title || l
+                  const c = l.color || labelColor(title)
+                  return (
+                    <button key={title} onClick={() => addLabelOrMove(l)}
+                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--bg-hover)] text-left transition-colors">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                      <span className="text-sm text-[var(--text-secondary)]">{title}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Labels que representam posição no kanban — não mostrar como chips avulsos
 // A única label "livre" típica é 'humano' (desativa bot) e outras personalizadas
 const KANBAN_LABEL_KEYS = new Set([
@@ -475,10 +657,28 @@ function LabelsPanel({ conversationId, initialLabels, currentColumn, onColumMigr
 
   const hasResults = filteredFree.length > 0 || kanbanOptions.length > 0
 
+  const colLabel = {
+    leads:'Leads', negociacao:'Negociação', aguardando_cotacao:'Ag. Cotação',
+    agendado:'Agendado', lancar_venda:'Lançar Venda', aguardando_pagamento:'Ag. Pgto',
+    pago:'Pago ✓', sem_retorno:'Sem Retorno'
+  }[currentColumn] || currentColumn
+  const colColor = {
+    leads:'#3b82f6', negociacao:'#8b5cf6', aguardando_cotacao:'#f59e0b',
+    agendado:'#06b6d4', lancar_venda:'#10b981', aguardando_pagamento:'#f97316',
+    pago:'#22c55e', sem_retorno:'#6b7280'
+  }[currentColumn] || '#3b82f6'
+
   return (
     <div className="px-4 py-2 flex-shrink-0 border-b border-[var(--border)]">
       <div className="flex items-center gap-1.5 flex-wrap">
         <Tag size={11} className="text-[var(--text-muted)] flex-shrink-0" />
+
+        {/* Etapa atual — chip fixo, não removível. Clica em + Etiqueta para mudar */}
+        <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold"
+          style={{ backgroundColor: colColor + '20', color: colColor, border: `1px solid ${colColor}40` }}>
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: colColor }} />
+          {colLabel}
+        </span>
 
         {/* Toggle HUMANO — desativa/ativa o robô */}
         <button
@@ -818,7 +1018,7 @@ function AudioPreview({ blob, onSend, onCancel, sending }) {
 
 // ─── Componente principal: ChatPanel ─────────────────────────────────────────
 export default function ChatPanel() {
-  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal } = useApp()
+  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove } = useApp()
   const [messages, setMessages] = useState([])
   const [currentColumn, setCurrentColumn] = useState(null)
   const [assigneeName, setAssigneeName] = useState('')
@@ -905,21 +1105,29 @@ export default function ChatPanel() {
 
     if (column === 'agendado') {
       setScheduleModal({ lead: selectedLead })
-      return  // modal faz a chamada à API + atualiza estado
+      return
     }
-
     if (column === 'aguardando_pagamento') {
       setPaymentModal({ lead: selectedLead })
-      return  // modal faz a chamada à API + atualiza estado
+      return
     }
 
-    await api.moveLead(selectedLead.id, column)
+    // Move INSTANTANEAMENTE no kanban (otimista) antes de chamar a API
+    applyPendingMove(selectedLead, column)
     setCurrentColumn(column)
     const col = ALL_COLUMNS.find(c => c.id === column)
     setMoveToast({ text: `Movido → ${col?.label}`, color: col?.color || '#3b82f6' })
-    setTimeout(() => setMoveToast(null), 3000)
+    setTimeout(() => setMoveToast(null), 2500)
     setSelectedLead({ ...selectedLead, column })
-  }, [selectedLead, setSelectedLead, setScheduleModal, setPaymentModal])
+
+    // API em background
+    api.moveLead(selectedLead.id, column).catch(e => {
+      console.error('Move failed:', e)
+      // Reverte se falhar
+      setCurrentColumn(selectedLead.column)
+      setSelectedLead({ ...selectedLead })
+    })
+  }, [selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove])
 
   // ── Enviar texto ──────────────────────────────────────────────────────────
   const handleSend = async () => {
@@ -1076,31 +1284,15 @@ export default function ChatPanel() {
         </div>
       </div>
 
-      {/* ── Barra: etapa atual + produto + agente ── */}
-      <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-2 flex-wrap flex-shrink-0">
-        {/* Etapa atual — destaque visual, label principal */}
-        <ColumnMover currentColumn={currentColumn || selectedLead.column} onMove={handleMove} />
-        {selectedLead.product && (
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
-            {selectedLead.product}
-          </span>
-        )}
-        <div className="ml-auto">
-          <AgentAssigner
-            conversationId={selectedLead.id}
-            currentAssigneeName={assigneeName}
-            onAssigned={agent => setAssigneeName(agent.name)}
-          />
-        </div>
-      </div>
-
-      {/* ── Etiquetas ── */}
-      <LabelsPanel
+      {/* ── Barra unificada: etapa + agente + etiquetas (tudo em um só lugar) ── */}
+      <UnifiedBar
         conversationId={selectedLead.id}
         initialLabels={selectedLead.labels || []}
         currentColumn={currentColumn || selectedLead.column}
-        onColumMigrate={handleMove}
+        product={selectedLead.product}
+        assigneeName={assigneeName}
+        onAssigned={agent => setAssigneeName(agent.name)}
+        onMove={handleMove}
       />
 
       {/* ── Mensagens ── */}
