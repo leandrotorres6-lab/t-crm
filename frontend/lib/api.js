@@ -1,17 +1,17 @@
 import { API_URL } from './config'
 
 async function fetchJSON(path, options = {}) {
-  try {
-    const res = await fetch(`${API_URL}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json()
-  } catch (err) {
-    console.error('[API Error]', path, err)
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    const err = new Error(data.error || `HTTP ${res.status}`)
+    err.data = data
     throw err
   }
+  return res.json()
 }
 
 export const api = {
@@ -40,6 +40,10 @@ export const api = {
   getPagamentos: () => fetchJSON('/pagamentos'),
 
   getDashboard: () => fetchJSON('/dashboard'),
+  login: (agentId, password) => fetchJSON('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ agentId, password })
+  }),
   getUsers: () => fetchJSON('/users'),
   markRead: (id) => fetchJSON(`/conversations/${id}/read`, { method: 'POST' }),
 }

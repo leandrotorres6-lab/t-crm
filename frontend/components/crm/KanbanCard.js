@@ -126,8 +126,10 @@ export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
             <p className="text-sm font-semibold truncate text-[var(--text-primary)] leading-tight">{lead.name}</p>
           </div>
           {unread > 0 && (
-            <div className="flex-shrink-0 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-xs font-bold text-white animate-pulse"
-              style={{ backgroundColor: '#ef4444', fontSize: '10px', padding: '0 4px' }}>
+            <div key={unread} className="flex-shrink-0 min-w-[20px] h-[20px] rounded-full flex items-center justify-center font-bold text-white animate-bounce"
+              style={{ backgroundColor: '#ef4444', fontSize: '11px', padding: '0 5px',
+                boxShadow: '0 0 8px rgba(239,68,68,0.6)',
+                animation: 'bounce 0.4s ease-out, pulse 2s infinite 0.4s' }}>
               {unread > 99 ? '99+' : unread}
             </div>
           )}

@@ -338,6 +338,57 @@ app.get('/api/pagamentos', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+  const { agentId, password } = req.body
+  if (!agentId || !password) return res.status(400).json({ error: 'Informe agente e senha' })
+
+  // Busca o agente
+  let agent
+  try {
+    if (CHATWOOT_READY) {
+      const agents = await cw.getAgents()
+      const raw = agents.find(a => String(a.id) === String(agentId))
+      if (!raw) return res.status(404).json({ error: 'Agente não encontrado' })
+      const isSupervisor = SUPERVISORS.some(s => (raw.name || '').toLowerCase().includes(s))
+      agent = {
+        id: String(raw.id),
+        name: raw.name,
+        email: raw.email || '',
+        avatar: (raw.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase(),
+        avatarUrl: raw.avatar_url || null,
+        role: isSupervisor ? 'supervisor' : 'vendedor',
+      }
+    } else {
+      const { users } = require('./data/mockData')
+      const u = users.find(u => u.id === agentId)
+      if (!u) return res.status(404).json({ error: 'Agente não encontrado' })
+      agent = u
+    }
+  } catch (e) {
+    return res.status(500).json({ error: 'Erro ao buscar agente' })
+  }
+
+  // Valida senha — chave no .env: AGENT_PASS_<NOME_NORMALIZADO>
+  // Normaliza: "Leandro Torres" → AGENT_PASS_LEANDRO_TORRES
+  // Tenta também só o primeiro nome: AGENT_PASS_LEANDRO
+  const normalize = (s) => s.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')
+  const nameParts = (agent.name || '').trim().split(' ')
+  const keyFull = `AGENT_PASS_${normalize(agent.name)}`
+  const keyFirst = `AGENT_PASS_${normalize(nameParts[0])}`
+  const storedPass = process.env[keyFull] || process.env[keyFirst]
+
+  if (!storedPass) {
+    return res.status(401).json({ error: `Senha não configurada para ${agent.name}. Configure ${keyFirst} no Railway.` })
+  }
+
+  if (password !== storedPass) {
+    return res.status(401).json({ error: 'Senha incorreta' })
+  }
+
+  res.json({ ok: true, agent })
+})
+
 // ─── AGENTES ─────────────────────────────────────────────────────────────────
 app.get('/api/agents', async (req, res) => {
   try {

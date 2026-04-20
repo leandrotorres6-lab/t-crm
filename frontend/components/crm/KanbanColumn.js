@@ -107,6 +107,27 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
     return () => window.removeEventListener('tcrm:lead-moved', handler)
   }, [columnId])
 
+  // Nova mensagem → move o card para o topo desta coluna
+  useEffect(() => {
+    const handler = (e) => {
+      const { conversationId, content } = e.detail
+      setLeads(prev => {
+        const idx = prev.findIndex(l => l.id === conversationId)
+        if (idx === -1) return prev // card não está nesta coluna
+        if (idx === 0) {
+          // Já está no topo — só atualiza a última mensagem
+          return prev.map((l, i) => i === 0 ? { ...l, lastMessage: content || l.lastMessage } : l)
+        }
+        // Move para o topo com última mensagem atualizada
+        const card = { ...prev[idx], lastMessage: content || prev[idx].lastMessage }
+        const rest = prev.filter((_, i) => i !== idx)
+        return [card, ...rest]
+      })
+    }
+    window.addEventListener('tcrm:new-message', handler)
+    return () => window.removeEventListener('tcrm:new-message', handler)
+  }, [])
+
   // refreshToken muda → recarrega em background
   useEffect(() => {
     if (refreshToken > 0) {

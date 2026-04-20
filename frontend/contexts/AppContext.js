@@ -56,6 +56,19 @@ export function AppProvider({ children }) {
     setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: 1 }))
   })
 
+  // Nova mensagem recebida → sobe o card para o topo da coluna dele
+  useSocket('new_message', ({ conversationId, message }) => {
+    // Ignora mensagens enviadas pelo agente (só cliente)
+    if (message?.sender !== 'lead') return
+    const id = String(conversationId)
+    // Dispara evento global para a coluna reordenar
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:new-message', {
+        detail: { conversationId: id, content: message?.content || '' }
+      }))
+    }
+  })
+
   useSocket('lead_moved', ({ id, column, fromColumn }) => {
     clearPendingMove(String(id))
     setSelectedLeadRaw(prev => {

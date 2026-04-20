@@ -163,49 +163,34 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: header da coluna atual ── */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
-        <button onClick={() => mobileCol > 0 && setMobileCol(i => i - 1)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl transition-all"
-          style={{ color: mobileCol > 0 ? currentColor : 'var(--text-muted)', opacity: mobileCol > 0 ? 1 : 0.3 }}>
-          <ChevronLeft size={20} />
-        </button>
-
-        <div className="flex flex-col items-center">
+      <div className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-[var(--border)] flex-shrink-0">
+        {/* Nome + badge + dots */}
+        <div className="flex flex-col flex-1 items-center">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentColor }} />
-            <span className="text-base font-bold text-[var(--text-primary)]">
-              {COL_LABELS[currentColId]}
-            </span>
-            <span className="text-sm font-bold px-2 py-0.5 rounded-full"
+            <span className="text-sm font-bold text-[var(--text-primary)]">{COL_LABELS[currentColId]}</span>
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
               style={{ backgroundColor: currentColor + '20', color: currentColor }}>
               {columnCounts[currentColId] || 0}
             </span>
           </div>
-          {/* Dots de progresso */}
+          {/* Dots clicáveis */}
           <div className="flex gap-1 mt-1.5">
             {ALL_COLUMNS.map((_, i) => (
               <button key={i} onClick={() => setMobileCol(i)}
-                className="transition-all rounded-full"
+                className="rounded-full transition-all duration-300"
                 style={{
-                  width: i === mobileCol ? '16px' : '6px',
+                  width: i === mobileCol ? '18px' : '6px',
                   height: '6px',
                   backgroundColor: i === mobileCol ? currentColor : 'var(--border)',
                 }} />
             ))}
           </div>
         </div>
-
-        <div className="flex items-center gap-1">
-          <button onClick={refreshAll}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
-            <RefreshCw size={16} />
-          </button>
-          <button onClick={() => mobileCol < ALL_COLUMNS.length - 1 && setMobileCol(i => i + 1)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl transition-all"
-            style={{ color: mobileCol < ALL_COLUMNS.length - 1 ? currentColor : 'var(--text-muted)', opacity: mobileCol < ALL_COLUMNS.length - 1 ? 1 : 0.3 }}>
-            <ChevronRight size={20} />
-          </button>
-        </div>
+        <button onClick={refreshAll}
+          className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+          <RefreshCw size={14} className={false ? 'animate-spin' : ''} />
+        </button>
       </div>
 
       {/* Toasts */}
@@ -232,53 +217,65 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: uma coluna por vez com peeks nas laterais ── */}
+      {/* ── Mobile: uma coluna por vez, tela cheia, swipe ── */}
       <div className="md:hidden flex-1 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
-        {/* Container com padding para mostrar peek das colunas adjacentes */}
-        <div className="absolute inset-0 overflow-hidden" style={{ paddingLeft: '0', paddingRight: '0' }}>
-          <div className="h-full flex transition-transform duration-300 ease-in-out"
-            style={{
-              transform: `translateX(calc(-${mobileCol * 100}% + ${mobileCol > 0 ? '12px' : '0px'}))`,
-              width: `${ALL_COLUMNS.length * 100}%`,
-            }}>
-            {ALL_COLUMNS.map((col, i) => {
-              const isActive = i === mobileCol
-              const isPrev = i === mobileCol - 1
-              const isNext = i === mobileCol + 1
-              return (
-                <div key={col} className="h-full transition-all duration-300"
-                  style={{
-                    width: `${100 / ALL_COLUMNS.length}%`,
-                    paddingLeft: isNext ? '4px' : '0',
-                    paddingRight: isPrev ? '4px' : '0',
-                    opacity: isActive ? 1 : 0.4,
-                    transform: isActive ? 'scale(1)' : 'scale(0.97)',
-                  }}>
-                  <KanbanColumn columnId={col}
-                    refreshToken={colRefresh[col] || 0}
-                    onDrop={handleDrop}
-                    isMobile />
-                </div>
-              )
-            })}
-          </div>
+
+        {/* Coluna ativa — ocupa tela cheia */}
+        <div className="absolute inset-0">
+          {ALL_COLUMNS.map((col, i) => (
+            <div key={col}
+              className="absolute inset-0 transition-all duration-300 ease-in-out"
+              style={{
+                opacity: i === mobileCol ? 1 : 0,
+                pointerEvents: i === mobileCol ? 'all' : 'none',
+                transform: i === mobileCol
+                  ? 'translateX(0)'
+                  : i < mobileCol
+                    ? 'translateX(-100%)'
+                    : 'translateX(100%)',
+              }}>
+              <KanbanColumn
+                columnId={col}
+                refreshToken={colRefresh[col] || 0}
+                onDrop={handleDrop}
+              />
+            </div>
+          ))}
         </div>
 
-        {/* Peek visual: seta esquerda se tem coluna anterior */}
+        {/* Botão esquerda — pill elegante */}
         {mobileCol > 0 && (
           <button onClick={() => setMobileCol(i => i - 1)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center"
-            style={{ background: 'linear-gradient(to right, var(--bg-primary), transparent)' }}>
-            <ChevronLeft size={20} style={{ color: COL_COLORS[ALL_COLUMNS[mobileCol - 1]] }} />
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-full shadow-lg transition-all active:scale-95"
+            style={{
+              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol - 1]] + 'ee',
+              color: 'white',
+              backdropFilter: 'blur(8px)',
+              boxShadow: `0 4px 16px ${COL_COLORS[ALL_COLUMNS[mobileCol - 1]]}60`,
+            }}>
+            <ChevronLeft size={14} />
+            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '60px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {COL_LABELS[ALL_COLUMNS[mobileCol - 1]]}
+            </span>
           </button>
         )}
-        {/* Peek visual: seta direita se tem próxima coluna */}
+
+        {/* Botão direita — pill elegante */}
         {mobileCol < ALL_COLUMNS.length - 1 && (
           <button onClick={() => setMobileCol(i => i + 1)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center"
-            style={{ background: 'linear-gradient(to left, var(--bg-primary), transparent)' }}>
-            <ChevronRight size={20} style={{ color: COL_COLORS[ALL_COLUMNS[mobileCol + 1]] }} />
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-full shadow-lg transition-all active:scale-95"
+            style={{
+              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol + 1]] + 'ee',
+              color: 'white',
+              backdropFilter: 'blur(8px)',
+              boxShadow: `0 4px 16px ${COL_COLORS[ALL_COLUMNS[mobileCol + 1]]}60`,
+            }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '60px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {COL_LABELS[ALL_COLUMNS[mobileCol + 1]]}
+            </span>
+            <ChevronRight size={14} />
           </button>
         )}
       </div>
