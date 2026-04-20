@@ -49,6 +49,8 @@ export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [moving, setMoving] = useState(false)
   const menuRef = useRef(null)
+  const touchStartY = useRef(0)
+  const touchStartX = useRef(0)
 
   const handleQuickMove = async (e, col) => {
     e.stopPropagation()
@@ -102,7 +104,16 @@ export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
         if (onDragEnd) onDragEnd(e)
       }}
       onClick={() => setSelectedLead(lead)}
-      onTouchEnd={e => { e.preventDefault(); setSelectedLead(lead) }}
+      onTouchStart={e => { touchStartY.current = e.touches[0].clientY; touchStartX.current = e.touches[0].clientX }}
+      onTouchEnd={e => {
+        const dy = Math.abs(e.changedTouches[0].clientY - (touchStartY.current || 0))
+        const dx = Math.abs(e.changedTouches[0].clientX - (touchStartX.current || 0))
+        // Só abre se foi um tap (movimento < 10px) — não abre ao rolar
+        if (dy < 10 && dx < 10) {
+          e.preventDefault()
+          setSelectedLead(lead)
+        }
+      }}
       className={`kanban-card group relative rounded-xl p-3 cursor-pointer transition-all duration-200 animate-fade-in select-none
         ${isSelected ? 'ring-2 ring-blue-500 shadow-lg shadow-blue-500/10' : 'hover:shadow-md hover:-translate-y-0.5'}
       `}

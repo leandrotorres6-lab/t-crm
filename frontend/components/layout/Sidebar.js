@@ -5,12 +5,13 @@ import { useApp } from '../../contexts/AppContext'
 import { LogOut } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
-  LayoutDashboard, KanbanSquare, Calendar, Users, Menu, X,
+  LayoutDashboard, KanbanSquare, Calendar, Users, MessageCircle, Menu, X,
   Sun, Moon, Circle, Wifi, WifiOff, ChevronDown, DollarSign
 } from 'lucide-react'
 import { useState } from 'react'
 
 const NAV = [
+  { href: '/conversas', icon: MessageCircle, label: 'Conversas' },
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/crm', icon: KanbanSquare, label: 'CRM' },
   { href: '/agendamento', icon: Calendar, label: 'Agendamento' },

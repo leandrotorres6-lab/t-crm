@@ -71,10 +71,18 @@ export function AppProvider({ children }) {
 
   useSocket('lead_moved', ({ id, column, fromColumn }) => {
     clearPendingMove(String(id))
+    // Atualiza selectedLead se for o mesmo
     setSelectedLeadRaw(prev => {
       if (prev && String(prev.id) === String(id)) return { ...prev, column }
       return prev
     })
+    // Notifica as colunas para mover o card instantaneamente
+    // (acontece quando alguém muda a label no Chatwoot)
+    if (typeof window !== 'undefined' && fromColumn && fromColumn !== column) {
+      window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+        detail: { leadId: String(id), fromCol: fromColumn, toCol: column }
+      }))
+    }
   })
 
   // conversation_updated: atualiza labels e coluna do lead selecionado em tempo real

@@ -674,28 +674,44 @@ app.post('/api/chatwoot/webhook', (req, res) => {
   }
 
   if (event === 'conversation_updated') {
-    store.invalidateCache()
     const convId = String(data.id)
     const rawLabels = data.labels || []
-    const crmLabel = rawLabels.find(l => l.startsWith('crm_'))
+
+    // Resolve coluna a partir das labels (crm_xxx tem prioridade, depois labels de posição)
+    const newColumn = cw.resolveColumnFromLabels(rawLabels)
+    const currentCol = store.getColumn(convId)
     const KANBAN = new Set(['lead','leads','negociacao','negociação','aguardando_cotacao',
       'agendado','lancar_venda','aguardando_pagamento','pago','fechado','sem_retorno','perdido'])
     const freeLabels = rawLabels.filter(l => !l.startsWith('crm_') && !KANBAN.has(l.toLowerCase()))
 
-    // Se conversa foi resolvida no Chatwoot → move para sem_retorno no kanban
-    // (a menos que já esteja em pago)
+    // Salva nova coluna no store SE mudou (sincroniza Chatwoot → T-CRM)
+    if (newColumn && newColumn !== currentCol) {
+      store.setColumn(convId, newColumn)
+      store.invalidateCache()
+      io.emit('lead_moved', {
+        id: convId,
+        column: newColumn,
+        fromColumn: currentCol,
+      })
+      console.log(`[Webhook] Conversa ${convId}: ${currentCol} → ${newColumn}`)
+    } else {
+      store.invalidateCache()
+    }
+
+    // Se resolvida no Chatwoot → sem_retorno (exceto pago)
     if (data.status === 'resolved') {
-      const currentCol = store.getColumn(convId)
-      if (currentCol !== 'pago') {
+      const col = store.getColumn(convId)
+      if (col !== 'pago') {
         store.setColumn(convId, 'sem_retorno')
+        store.invalidateCache()
+        io.emit('lead_moved', { id: convId, column: 'sem_retorno', fromColumn: col })
       }
-      io.emit('lead_moved', { id: convId, column: store.getColumn(convId) })
     }
 
     io.emit('conversation_updated', {
       id: convId,
       labels: freeLabels,
-      column: crmLabel ? crmLabel.replace('crm_', '') : null,
+      column: newColumn || null,
     })
   }
 

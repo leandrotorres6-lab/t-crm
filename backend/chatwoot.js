@@ -320,6 +320,7 @@ function detectProduct(text) {
 }
 
 module.exports = {
+  resolveColumnFromLabels: resolveColumn,
   getConversations, getConversation,
   getMessages, sendMessage, sendAttachment,
   getAgents, assignAgent, getInboxes,

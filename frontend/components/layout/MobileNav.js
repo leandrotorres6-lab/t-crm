@@ -5,11 +5,12 @@ import { usePathname } from 'next/navigation'
 import { useApp } from '../../contexts/AppContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
-  LayoutDashboard, KanbanSquare, Calendar, Users, Menu, X,
+  LayoutDashboard, KanbanSquare, Calendar, Users, MessageCircle, Menu, X,
   Sun, Moon, DollarSign, LogOut, Shield, User
 } from 'lucide-react'
 
 const NAV = [
+  { href: '/conversas', icon: MessageCircle, label: 'Conversas' },
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/crm', icon: KanbanSquare, label: 'CRM' },
   { href: '/agendamento', icon: Calendar, label: 'Agendamento' },

@@ -122,16 +122,23 @@ export default function KanbanBoard() {
     }))
   }
 
-  // Mobile swipe
-  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX }
+  // Mobile swipe — só ativa em gestos horizontais (não interfere com scroll vertical)
+  const touchStartYRef = useRef(null)
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartYRef.current = e.touches[0].clientY
+  }
   const handleTouchEnd = (e) => {
     if (touchStartX.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartX.current
-    if (Math.abs(dx) > 50) {
+    const dy = Math.abs(e.changedTouches[0].clientY - (touchStartYRef.current || 0))
+    // Só muda coluna se o gesto for mais horizontal do que vertical
+    if (Math.abs(dx) > 60 && dy < 40) {
       if (dx < 0 && mobileCol < ALL_COLUMNS.length - 1) setMobileCol(i => i + 1)
       if (dx > 0 && mobileCol > 0) setMobileCol(i => i - 1)
     }
     touchStartX.current = null
+    touchStartYRef.current = null
   }
 
   const totalLeads = Object.values(columnCounts).reduce((a, b) => a + b, 0)
@@ -216,13 +223,49 @@ export default function KanbanBoard() {
         </div>
       </div>
 
-      {/* ── Mobile: uma coluna por vez com peeks nas laterais ── */}
-      {/* ── Mobile: uma coluna por vez, tela cheia, swipe ── */}
+      {/* ── Mobile: pills de navegação no TOPO (abaixo do header) ── */}
+      <div className="md:hidden flex items-center justify-between px-3 py-2 border-b border-[var(--border)] flex-shrink-0"
+        style={{ backgroundColor: 'var(--bg-secondary)' }}>
+        {/* Pill esquerda */}
+        {mobileCol > 0 ? (
+          <button onClick={() => setMobileCol(i => i - 1)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
+            style={{
+              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol - 1]] + '25',
+              color: COL_COLORS[ALL_COLUMNS[mobileCol - 1]],
+              border: `1px solid ${COL_COLORS[ALL_COLUMNS[mobileCol - 1]]}40`,
+            }}>
+            <ChevronLeft size={13} />
+            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '70px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {COL_LABELS[ALL_COLUMNS[mobileCol - 1]]}
+            </span>
+          </button>
+        ) : <div className="w-20" />}
+
+        {/* Swipe hint */}
+        <p className="text-xs text-[var(--text-muted)]" style={{ fontSize: '10px' }}>deslize ←→</p>
+
+        {/* Pill direita */}
+        {mobileCol < ALL_COLUMNS.length - 1 ? (
+          <button onClick={() => setMobileCol(i => i + 1)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
+            style={{
+              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol + 1]] + '25',
+              color: COL_COLORS[ALL_COLUMNS[mobileCol + 1]],
+              border: `1px solid ${COL_COLORS[ALL_COLUMNS[mobileCol + 1]]}40`,
+            }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '70px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {COL_LABELS[ALL_COLUMNS[mobileCol + 1]]}
+            </span>
+            <ChevronRight size={13} />
+          </button>
+        ) : <div className="w-20" />}
+      </div>
+
+      {/* ── Mobile: colunas com swipe horizontal ── */}
       <div className="md:hidden flex-1 overflow-hidden relative"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
-
-        {/* Coluna ativa — ocupa tela cheia */}
         <div className="absolute inset-0">
           {ALL_COLUMNS.map((col, i) => (
             <div key={col}
@@ -232,52 +275,12 @@ export default function KanbanBoard() {
                 pointerEvents: i === mobileCol ? 'all' : 'none',
                 transform: i === mobileCol
                   ? 'translateX(0)'
-                  : i < mobileCol
-                    ? 'translateX(-100%)'
-                    : 'translateX(100%)',
+                  : i < mobileCol ? 'translateX(-100%)' : 'translateX(100%)',
               }}>
-              <KanbanColumn
-                columnId={col}
-                refreshToken={colRefresh[col] || 0}
-                onDrop={handleDrop}
-              />
+              <KanbanColumn columnId={col} refreshToken={colRefresh[col] || 0} onDrop={handleDrop} />
             </div>
           ))}
         </div>
-
-        {/* Botão esquerda — pill elegante */}
-        {mobileCol > 0 && (
-          <button onClick={() => setMobileCol(i => i - 1)}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-full shadow-lg transition-all active:scale-95"
-            style={{
-              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol - 1]] + 'ee',
-              color: 'white',
-              backdropFilter: 'blur(8px)',
-              boxShadow: `0 4px 16px ${COL_COLORS[ALL_COLUMNS[mobileCol - 1]]}60`,
-            }}>
-            <ChevronLeft size={14} />
-            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '60px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-              {COL_LABELS[ALL_COLUMNS[mobileCol - 1]]}
-            </span>
-          </button>
-        )}
-
-        {/* Botão direita — pill elegante */}
-        {mobileCol < ALL_COLUMNS.length - 1 && (
-          <button onClick={() => setMobileCol(i => i + 1)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1.5 px-3 py-2 rounded-full shadow-lg transition-all active:scale-95"
-            style={{
-              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol + 1]] + 'ee',
-              color: 'white',
-              backdropFilter: 'blur(8px)',
-              boxShadow: `0 4px 16px ${COL_COLORS[ALL_COLUMNS[mobileCol + 1]]}60`,
-            }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '60px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-              {COL_LABELS[ALL_COLUMNS[mobileCol + 1]]}
-            </span>
-            <ChevronRight size={14} />
-          </button>
-        )}
       </div>
     </div>
   )
