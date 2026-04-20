@@ -314,64 +314,90 @@ function AgentAssigner({ conversationId, currentAssigneeName, onAssigned }) {
   const [open, setOpen] = useState(false)
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(false)
-  const ref = useRef(null)
+  const [assigning, setAssigning] = useState(null)
 
+  // Carrega agentes uma vez
   useEffect(() => {
-    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', fn)
-    return () => document.removeEventListener('mousedown', fn)
+    api.getAgents()
+      .then(data => setAgents(Array.isArray(data) ? data : []))
+      .catch(e => console.error('getAgents failed:', e))
   }, [])
-
-  const loadAgents = async () => {
-    if (agents.length > 0) { setOpen(true); return }
-    setLoading(true)
-    try {
-      const data = await api.getAgents()
-      setAgents(data)
-      setOpen(true)
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
-  }
 
   const assign = async (agent) => {
     setOpen(false)
+    setAssigning(agent.name)
     try {
       await api.assignAgent(conversationId, agent.id)
       onAssigned && onAssigned(agent)
-    } catch (e) { console.error(e) }
+    } catch (e) { console.error('assignAgent failed:', e) }
+    finally { setAssigning(null) }
   }
 
+  const displayName = assigning || (currentAssigneeName ? currentAssigneeName.split(' ')[0] : 'Atribuir')
+
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={loadAgents}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all hover:opacity-80"
         style={{ backgroundColor: 'rgba(139,92,246,0.12)', color: '#a78bfa' }}>
-        {loading ? <Loader2 size={11} className="animate-spin" /> : <UserCheck size={11} />}
-        {currentAssigneeName ? currentAssigneeName.split(' ')[0] : 'Atribuir'}
+        {assigning ? <Loader2 size={11} className="animate-spin" /> : <UserCheck size={11} />}
+        {displayName}
         <ChevronDown size={10} />
       </button>
-      {open && agents.length > 0 && (
-        <div className="absolute top-full right-0 mt-1 w-52 rounded-xl border border-[var(--border)] shadow-2xl z-50 overflow-hidden animate-slide-up"
-          style={{ backgroundColor: 'var(--bg-card)' }}>
-          <div className="px-3 py-2 border-b border-[var(--border)]">
-            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Atribuir para</p>
+
+      {/* Modal centralizado — nunca cortado */}
+      {open && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)' }}>
+          <div className="w-full max-w-xs rounded-2xl overflow-hidden shadow-2xl animate-slide-up"
+            style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+
+            <div className="px-4 py-3 border-b border-[var(--border)]">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Atribuir conversa</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">Escolha quem vai atender</p>
+            </div>
+
+            <div className="py-1 max-h-64 overflow-y-auto">
+              {agents.length === 0 && (
+                <p className="text-sm text-[var(--text-muted)] px-4 py-4 text-center">
+                  Carregando agentes...
+                </p>
+              )}
+              {agents.map(a => {
+                const isActive = a.name === currentAssigneeName
+                const roleColor = a.role === 'supervisor' ? '#60a5fa' : '#34d399'
+                return (
+                  <button key={a.id} onClick={() => assign(a)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors text-left"
+                    style={isActive ? { backgroundColor: 'rgba(59,130,246,0.08)' } : {}}>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                      style={{ backgroundColor: roleColor + '30', color: roleColor }}>
+                      {a.avatarUrl
+                        ? <img src={a.avatarUrl} alt={a.name} className="w-full h-full rounded-xl object-cover" />
+                        : a.avatar
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{a.name}</p>
+                      <p className="text-xs capitalize" style={{ color: roleColor }}>{a.role}</p>
+                    </div>
+                    {isActive && <Check size={14} className="text-blue-400 flex-shrink-0" />}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="px-4 py-3 border-t border-[var(--border)]">
+              <button onClick={() => setOpen(false)}
+                className="w-full py-2 rounded-xl text-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
+                Cancelar
+              </button>
+            </div>
           </div>
-          {agents.map(a => (
-            <button key={a.id} onClick={() => assign(a)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors text-left">
-              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                {a.avatar}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-[var(--text-primary)] truncate">{a.name}</p>
-                <p className="text-xs text-[var(--text-muted)] capitalize">{a.role}</p>
-              </div>
-              {a.name === currentAssigneeName && <Check size={13} className="text-blue-400" />}
-            </button>
-          ))}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
