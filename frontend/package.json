@@ -1,0 +1,23 @@
+{
+  "name": "t-crm-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "lucide-react": "^0.303.0",
+    "next": "14.1.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^2.10.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0"
+  }
+}

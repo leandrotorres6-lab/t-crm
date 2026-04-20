@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-outfit: 'Outfit', sans-serif;
+  --font-dm-mono: 'DM Mono', monospace;
+
+  /* Light mode */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-light: #eff6ff;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #94a3b8;
+  --sidebar-active: #ffffff;
+  --sidebar-active-bg: rgba(59,130,246,0.15);
+}
+
+.dark {
+  --bg-primary: #080e1a;
+  --bg-secondary: #0c1421;
+  --bg-card: #0f1a2e;
+  --bg-hover: #162032;
+  --border: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --accent: #3b82f6;
+  --accent-light: rgba(59,130,246,0.1);
+  --sidebar-bg: #060c18;
+  --sidebar-text: #64748b;
+  --sidebar-active: #f1f5f9;
+  --sidebar-active-bg: rgba(59,130,246,0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Mobile / Touch ──────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Evita bounce no iOS */
+  body { overscroll-behavior: none; }
+
+  /* Botões maiores para toque */
+  button { min-height: 36px; }
+
+  /* Kanban card: margem maior para toque */
+  .kanban-card { padding: 12px 12px 12px 14px !important; }
+
+  /* Scroll suave em listas */
+  .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+}
+
+/* Evita zoom no focus de inputs no iOS */
+input, textarea, select {
+  font-size: max(16px, 1em);
+}
+
+/* Remove tap highlight */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Kanban drag styles */
+.kanban-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg) scale(1.02);
+  cursor: grabbing;
+}
+
+.kanban-column.drag-over {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+
+/* Utility classes */
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-card { background-color: var(--bg-card); }
+.bg-hover:hover { background-color: var(--bg-hover); }
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.border-theme { border-color: var(--border); }
+.accent { color: var(--accent); }
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium text-sm transition-all duration-200 flex items-center gap-2;
+  }
+  .btn-ghost {
+    @apply px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] font-medium text-sm transition-all duration-200 flex items-center gap-2;
+  }
+  .input-theme {
+    @apply w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all;
+  }
+  .card-theme {
+    @apply bg-[var(--bg-card)] border border-[var(--border)] rounded-xl;
+  }
+}

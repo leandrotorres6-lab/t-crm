@@ -1,0 +1,1197 @@
+'use client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useApp } from '../../contexts/AppContext'
+import { api } from '../../lib/api'
+import { useSocket } from '../../lib/socket'
+import {
+  Send, Loader2, Phone, Smile, Wifi, WifiOff, Tag, ChevronDown,
+  Check, ArrowRight, Mic, MicOff, Paperclip, ImageIcon, X,
+  Play, Pause, Download, FileText, ChevronUp, MoreVertical,
+  UserCheck, Plus, Trash2, Volume2
+} from 'lucide-react'
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
+const ALL_COLUMNS = [
+  { id: 'leads', label: 'Leads', color: '#3b82f6' },
+  { id: 'negociacao', label: 'Negociação', color: '#8b5cf6' },
+  { id: 'aguardando_cotacao', label: 'Ag. Cotação', color: '#f59e0b' },
+  { id: 'agendado', label: 'Agendado', color: '#06b6d4' },
+  { id: 'lancar_venda', label: 'Lançar Venda', color: '#10b981' },
+  { id: 'aguardando_pagamento', label: 'Ag. Pagamento', color: '#f97316' },
+  { id: 'pago', label: 'Pago ✓', color: '#22c55e' },
+  { id: 'sem_retorno', label: 'Sem Retorno', color: '#6b7280' },
+]
+
+function labelColor(str) {
+  let h = 0; for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h)
+  return ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16'][Math.abs(h) % 8]
+}
+function normalize(s) { return (s || '').toLowerCase().replace(/[_\-\s]/g, '') }
+function formatDuration(sec) { const m = Math.floor(sec / 60); return `${m}:${String(Math.floor(sec % 60)).padStart(2,'0')}` }
+function formatSize(bytes) { if (bytes > 1024*1024) return `${(bytes/(1024*1024)).toFixed(1)}MB`; return `${Math.round(bytes/1024)}KB` }
+
+// ─── Componente: player de áudio customizado ─────────────────────────────────
+function AudioPlayer({ url, isAgent }) {
+  const [playing, setPlaying] = useState(false)
+  const [current, setCurrent] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const audioRef = useRef(null)
+
+  // Força carregamento dos metadados (duração) assim que url estiver disponível
+  useEffect(() => {
+    if (!url || !audioRef.current) return
+    const audio = audioRef.current
+    audio.load()
+
+    const tryDuration = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration)
+      }
+    }
+
+    audio.addEventListener('loadedmetadata', tryDuration)
+    audio.addEventListener('durationchange', tryDuration)
+    // Fallback: tenta após pequeno delay
+    const t = setTimeout(tryDuration, 300)
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', tryDuration)
+      audio.removeEventListener('durationchange', tryDuration)
+      clearTimeout(t)
+    }
+  }, [url])
+
+  const toggle = () => {
+    if (!audioRef.current) return
+    if (playing) { audioRef.current.pause(); setPlaying(false) }
+    else { audioRef.current.play().then(() => setPlaying(true)).catch(console.error) }
+  }
+
+  const bg = isAgent ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)'
+  const fg = isAgent ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'
+  const accent = isAgent ? 'white' : '#3b82f6'
+  const progress = duration > 0 ? (current / duration) * 100 : 0
+
+  return (
+    <div className="flex items-center gap-2 min-w-[180px]">
+      <audio ref={audioRef} src={url} preload="metadata"
+        onTimeUpdate={e => setCurrent(e.target.currentTime)}
+        onLoadedMetadata={e => { if (isFinite(e.target.duration)) setDuration(e.target.duration) }}
+        onEnded={() => { setPlaying(false); setCurrent(0) }} />
+      <button onClick={toggle}
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110"
+        style={{ backgroundColor: accent, color: isAgent ? '#1d4ed8' : 'white' }}>
+        {playing ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      <div className="flex-1">
+        <div className="h-1 rounded-full cursor-pointer" style={{ backgroundColor: bg }}
+          onClick={e => {
+            if (!audioRef.current || !duration) return
+            const rect = e.currentTarget.getBoundingClientRect()
+            const pct = (e.clientX - rect.left) / rect.width
+            audioRef.current.currentTime = pct * duration
+          }}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: accent }} />
+        </div>
+        <p className="text-xs mt-0.5" style={{ color: fg, fontSize: '10px' }}>
+          {formatDuration(playing ? current : duration)}
+        </p>
+      </div>
+      <Volume2 size={12} style={{ color: fg, flexShrink: 0 }} />
+    </div>
+  )
+}
+
+// ─── Componente: imagem recebida ──────────────────────────────────────────────
+function ImageAttachment({ att }) {
+  const [open, setOpen] = useState(false)
+  if (!att.url) return null
+  return (
+    <>
+      <img src={att.url} alt="imagem" onClick={() => setOpen(true)}
+        className="rounded-xl max-w-[220px] max-h-[200px] object-cover cursor-zoom-in"
+        style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.9)' }} onClick={() => setOpen(false)}>
+          <img src={att.url} className="max-w-full max-h-full rounded-xl object-contain" />
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─── Componente: documento recebido ──────────────────────────────────────────
+function DocumentAttachment({ att, isAgent }) {
+  const ext = att.extension || att.filename?.split('.').pop()?.toUpperCase() || 'FILE'
+  const bg = isAgent ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)'
+  const fg = isAgent ? 'white' : 'var(--text-primary)'
+  const sub = isAgent ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)'
+  return (
+    <a href={att.url} target="_blank" rel="noreferrer"
+      className="flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all hover:opacity-80"
+      style={{ backgroundColor: bg, minWidth: '180px', maxWidth: '240px' }}>
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ backgroundColor: '#3b82f620' }}>
+        <FileText size={16} style={{ color: '#60a5fa' }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium truncate" style={{ color: fg }}>{att.filename}</p>
+        <p className="text-xs" style={{ color: sub, fontSize: '10px' }}>
+          {ext} {att.fileSize ? `· ${formatSize(att.fileSize)}` : ''}
+        </p>
+      </div>
+      <Download size={13} style={{ color: sub, flexShrink: 0 }} />
+    </a>
+  )
+}
+
+// ─── Componente: bolha de mensagem ───────────────────────────────────────────
+// Separa mensagens por data
+function groupByDate(messages) {
+  const groups = []
+  let currentDate = null
+  messages.forEach(msg => {
+    const d = new Date(msg.timestamp)
+    const dateStr = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    const today = new Date()
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
+    let label = dateStr
+    if (d.toDateString() === today.toDateString()) label = 'Hoje'
+    else if (d.toDateString() === yesterday.toDateString()) label = 'Ontem'
+    if (label !== currentDate) {
+      groups.push({ type: 'date', label })
+      currentDate = label
+    }
+    groups.push({ type: 'msg', msg })
+  })
+  return groups
+}
+
+function DateSeparator({ label }) {
+  return (
+    <div className="flex items-center gap-3 my-3">
+      <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+      <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+        style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }}>
+        {label}
+      </span>
+      <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+    </div>
+  )
+}
+
+function AgentAvatar({ name, avatarUrl, size = 24 }) {
+  if (avatarUrl) {
+    return (
+      <img src={avatarUrl} alt={name}
+        className="rounded-full object-cover flex-shrink-0"
+        style={{ width: size, height: size }}
+        onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
+    )
+  }
+  const initials = name ? name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : '?'
+  return (
+    <div className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+      style={{ width: size, height: size, backgroundColor: '#2563eb', fontSize: size * 0.38 }}>
+      {initials}
+    </div>
+  )
+}
+
+function MessageBubble({ msg }) {
+  if (msg.sender === 'activity') return null
+  const isAgent = msg.sender === 'agent'
+  const time = new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const hasText = msg.content && msg.content.trim()
+  const atts = msg.attachments || []
+
+  return (
+    <div className={`flex ${isAgent ? 'justify-end' : 'justify-start'} mb-3 gap-2 animate-fade-in`}>
+      {/* Avatar do lead (lado esquerdo) */}
+      {!isAgent && (
+        <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-white flex-shrink-0 mt-1"
+          style={{ fontSize: '10px', fontWeight: 'bold' }}>?</div>
+      )}
+
+      <div className="max-w-[78%]">
+        {/* Nome do agente acima da mensagem */}
+        {isAgent && msg.authorName && (
+          <div className="flex items-center gap-1.5 justify-end mb-1">
+            <span className="text-xs text-[var(--text-muted)]">{msg.authorName}</span>
+            <AgentAvatar name={msg.authorName} avatarUrl={msg.authorAvatarUrl} size={18} />
+          </div>
+        )}
+
+      <div className={`${isAgent ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md'} overflow-hidden`}
+        style={{
+          backgroundColor: isAgent ? '#2563eb' : 'var(--bg-card)',
+          border: isAgent ? 'none' : '1px solid var(--border)',
+        }}>
+        {/* Texto */}
+        {hasText && (
+          <div className="px-3 pt-2.5" style={{ color: isAgent ? 'white' : 'var(--text-primary)' }}>
+            <p className="text-sm leading-relaxed" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</p>
+          </div>
+        )}
+
+        {/* Attachments */}
+        {atts.map(att => (
+          <div key={att.id} className={`${hasText ? 'mt-1' : ''} ${atts.length === 1 && att.fileType === 'image' ? '' : 'px-3 py-1'}`}>
+            {att.fileType === 'image' && <ImageAttachment att={att} />}
+            {att.fileType === 'audio' && <div className="px-2 py-1"><AudioPlayer url={att.url} isAgent={isAgent} /></div>}
+            {att.fileType === 'video' && att.url && (
+              <video controls className="rounded-xl max-w-[220px]" style={{ maxHeight: '180px' }}>
+                <source src={att.url} />
+              </video>
+            )}
+            {att.fileType === 'file' && <DocumentAttachment att={att} isAgent={isAgent} />}
+          </div>
+        ))}
+
+        {/* Timestamp */}
+        <div className="px-3 pb-2 mt-0.5">
+          <p className={`text-xs text-right ${isAgent ? 'text-blue-200' : 'text-[var(--text-muted)]'}`}
+            style={{ fontSize: '10px' }}>{time}</p>
+        </div>
+      </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Componente: seletor de coluna ───────────────────────────────────────────
+function ColumnMover({ currentColumn, onMove }) {
+  const [open, setOpen] = useState(false)
+  const [moving, setMoving] = useState(false)
+  const ref = useRef(null)
+  const cur = ALL_COLUMNS.find(c => c.id === currentColumn) || ALL_COLUMNS[0]
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} disabled={moving}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+        style={{ backgroundColor: cur.color + '20', color: cur.color }}>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cur.color }} />
+        {moving ? '...' : cur.label}
+        <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 w-52 rounded-xl border border-[var(--border)] shadow-2xl z-50 overflow-hidden animate-slide-up"
+          style={{ backgroundColor: 'var(--bg-card)' }}>
+          <div className="px-3 py-2 border-b border-[var(--border)]">
+            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Mover para</p>
+          </div>
+          {ALL_COLUMNS.map(col => (
+            <button key={col.id} onClick={async () => {
+                setOpen(false)
+                // Só mostra loading para colunas que não abrem modal
+                const needsModal = col.id === 'agendado' || col.id === 'aguardando_pagamento'
+                if (!needsModal) setMoving(true)
+                await onMove(col.id)
+                if (!needsModal) setMoving(false)
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors text-left">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col.color }} />
+              <span className="text-sm flex-1" style={{ color: col.id === currentColumn ? col.color : 'var(--text-secondary)' }}>{col.label}</span>
+              {col.id === currentColumn && <Check size={13} style={{ color: col.color }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Componente: atribuir agente ─────────────────────────────────────────────
+function AgentAssigner({ conversationId, currentAssigneeName, onAssigned }) {
+  const [open, setOpen] = useState(false)
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const loadAgents = async () => {
+    if (agents.length > 0) { setOpen(true); return }
+    setLoading(true)
+    try {
+      const data = await api.getAgents()
+      setAgents(data)
+      setOpen(true)
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }
+
+  const assign = async (agent) => {
+    setOpen(false)
+    try {
+      await api.assignAgent(conversationId, agent.id)
+      onAssigned && onAssigned(agent)
+    } catch (e) { console.error(e) }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={loadAgents}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+        style={{ backgroundColor: 'rgba(139,92,246,0.12)', color: '#a78bfa' }}>
+        {loading ? <Loader2 size={11} className="animate-spin" /> : <UserCheck size={11} />}
+        {currentAssigneeName ? currentAssigneeName.split(' ')[0] : 'Atribuir'}
+        <ChevronDown size={10} />
+      </button>
+      {open && agents.length > 0 && (
+        <div className="absolute top-full right-0 mt-1 w-52 rounded-xl border border-[var(--border)] shadow-2xl z-50 overflow-hidden animate-slide-up"
+          style={{ backgroundColor: 'var(--bg-card)' }}>
+          <div className="px-3 py-2 border-b border-[var(--border)]">
+            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Atribuir para</p>
+          </div>
+          {agents.map(a => (
+            <button key={a.id} onClick={() => assign(a)}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors text-left">
+              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {a.avatar}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-[var(--text-primary)] truncate">{a.name}</p>
+                <p className="text-xs text-[var(--text-muted)] capitalize">{a.role}</p>
+              </div>
+              {a.name === currentAssigneeName && <Check size={13} className="text-blue-400" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Componente: painel de etiquetas ─────────────────────────────────────────
+// Labels que representam posição no kanban — não mostrar como chips avulsos
+// A única label "livre" típica é 'humano' (desativa bot) e outras personalizadas
+const KANBAN_LABEL_KEYS = new Set([
+  'lead','leads',
+  'negociacao','negociação','em_negociacao','em_negociação',
+  'aguardando_cotacao','aguardando_cotação','cotacao','cotação','aguardando-cotacao',
+  'aguardando_documentacao','aguardando_documentação','documentacao',
+  'agendado','agendamento',
+  'lancar_venda','lançar_venda','lancar-venda','lançar-venda','venda',
+  'aguardando_pagamento','aguardando-pagamento','pagamento',
+  'pago','pago_confirmado','fechado',
+  'sem_retorno','sem-retorno','sem retorno','perdido','inativo',
+])
+
+function isKanbanLabel(label) {
+  return KANBAN_LABEL_KEYS.has(label.toLowerCase().trim())
+}
+
+function LabelsPanel({ conversationId, initialLabels, currentColumn, onColumMigrate }) {
+  const [labels, setLabels] = useState(initialLabels || [])
+  const [allLabels, setAllLabels] = useState([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [search, setSearch] = useState('')
+  const [togglingHumano, setTogglingHumano] = useState(false)
+  const ref = useRef(null)
+
+  // Sincroniza quando selectedLead.labels muda (via socket)
+  useEffect(() => { setLabels(initialLabels || []) }, [JSON.stringify(initialLabels)])
+
+  useEffect(() => {
+    api.getAccountLabels().then(setAllLabels).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!showAdd) return
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setShowAdd(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [showAdd])
+
+  // Apenas labels não-kanban para exibir
+  const displayLabels = labels.filter(l => !isKanbanLabel(l))
+  const hasHumano = displayLabels.some(l => l.toLowerCase() === 'humano')
+  const otherLabels = displayLabels.filter(l => l.toLowerCase() !== 'humano')
+
+  // Toggle da label humano — sincroniza com Chatwoot
+  const toggleHumano = async () => {
+    setTogglingHumano(true)
+    try {
+      let updated
+      if (hasHumano) {
+        updated = labels.filter(l => l.toLowerCase() !== 'humano')
+      } else {
+        updated = [...labels, 'humano']
+      }
+      setLabels(updated)
+      await api.setConversationLabels(conversationId, updated)
+    } catch (e) {
+      console.error(e)
+      setLabels(labels) // reverte
+    } finally {
+      setTogglingHumano(false)
+    }
+  }
+
+  const addLabel = async (label) => {
+    const title = label.title || label
+    if (isKanbanLabel(title)) return // segurança extra
+    const updated = [...new Set([...labels, title])]
+    setLabels(updated)
+    setShowAdd(false)
+    setSearch('')
+    await api.setConversationLabels(conversationId, updated).catch(console.error)
+  }
+
+  const removeLabel = async (label) => {
+    const updated = labels.filter(l => l !== label)
+    setLabels(updated)
+    await api.setConversationLabels(conversationId, updated).catch(console.error)
+  }
+
+  // Labels livres disponíveis para adicionar (não kanban, não humano, não já presente)
+  const filteredFree = allLabels.filter(l => {
+    const title = l.title || l
+    if (isKanbanLabel(title)) return false
+    if (title.toLowerCase() === 'humano') return false
+    if (labels.some(e => e.toLowerCase() === title.toLowerCase())) return false
+    return title.toLowerCase().includes(search.toLowerCase())
+  })
+
+  // Colunas do kanban filtradas para o dropdown (exclui coluna atual)
+  const kanbanOptions = ALL_COLUMNS.filter(c => {
+    if (c.id === currentColumn) return false
+    return c.label.toLowerCase().includes(search.toLowerCase()) ||
+           c.id.toLowerCase().includes(search.toLowerCase())
+  })
+
+  const hasResults = filteredFree.length > 0 || kanbanOptions.length > 0
+
+  return (
+    <div className="px-4 py-2 flex-shrink-0 border-b border-[var(--border)]">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <Tag size={11} className="text-[var(--text-muted)] flex-shrink-0" />
+
+        {/* Toggle HUMANO — desativa/ativa o robô */}
+        <button
+          onClick={toggleHumano}
+          disabled={togglingHumano}
+          title={hasHumano ? "Clique para reativar o robô" : "Clique para desativar o robô (atendimento humano)"}
+          className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          style={hasHumano
+            ? { backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }
+            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }
+          }
+        >
+          {togglingHumano ? <span style={{ fontSize: '9px' }}>...</span>
+            : hasHumano
+              ? <><span>🤝</span><span>humano</span><span style={{ fontSize: '9px', opacity: 0.7 }}> · bot off</span></>
+              : <><span style={{ opacity: 0.4 }}>🤖</span><span>humano</span></>
+          }
+        </button>
+
+        {/* Outras labels livres */}
+        {otherLabels.map(label => {
+          const c = labelColor(label)
+          return (
+            <span key={label}
+              className="flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium group"
+              style={{ backgroundColor: c + '18', color: c, border: `1px solid ${c}30` }}>
+              <span>{label}</span>
+              <button onClick={() => removeLabel(label)}
+                className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400">
+                <X size={9} />
+              </button>
+            </span>
+          )
+        })}
+
+        {/* Botão dropdown — move kanban OU adiciona label livre */}
+        <div className="relative" ref={ref}>
+          <button onClick={() => setShowAdd(o => !o)}
+            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-all hover:opacity-80"
+            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }}>
+            <Plus size={9} /> Etiqueta
+          </button>
+
+          {showAdd && (
+            <div className="absolute top-full left-0 mt-1 w-56 rounded-xl border border-[var(--border)] shadow-2xl z-50 overflow-hidden animate-slide-up"
+              style={{ backgroundColor: 'var(--bg-card)' }}>
+              <div className="p-2 border-b border-[var(--border)]">
+                <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Buscar etapa ou etiqueta..." className="input-theme text-xs py-1.5" />
+              </div>
+
+              <div className="max-h-56 overflow-y-auto">
+                {!hasResults && (
+                  <p className="text-xs text-[var(--text-muted)] px-3 py-2 italic">Nenhuma encontrada</p>
+                )}
+
+                {/* ── Mover para coluna (etapas do kanban) ── */}
+                {kanbanOptions.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 border-b border-[var(--border)]">
+                      <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-medium">
+                        Mover para etapa
+                      </p>
+                    </div>
+                    {kanbanOptions.map(col => (
+                      <button key={col.id}
+                        onClick={() => { setShowAdd(false); setSearch(''); onColumMigrate(col.id) }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--bg-hover)] text-left transition-colors">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: col.color }} />
+                        <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{col.label}</span>
+                        <ArrowRight size={12} style={{ color: col.color, opacity: 0.7 }} />
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* ── Etiquetas livres (informativas) ── */}
+                {filteredFree.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 border-t border-[var(--border)]">
+                      <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-medium">
+                        Etiquetas
+                      </p>
+                    </div>
+                    {filteredFree.map(l => {
+                      const title = l.title || l
+                      const c = l.color || labelColor(title)
+                      return (
+                        <button key={title} onClick={() => addLabel(l)}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--bg-hover)] text-left transition-colors">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+                          <span className="text-sm text-[var(--text-secondary)]">{title}</span>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Componente: preview de arquivo/imagem antes de enviar ─────────────────────
+function FilePreview({ pending, onSend, onCancel, sending }) {
+  const { file, url, fileType } = pending
+  const sizeMB = file.size > 1024*1024
+    ? `${(file.size/1024/1024).toFixed(1)} MB`
+    : `${Math.round(file.size/1024)} KB`
+
+  return (
+    <div className="rounded-xl overflow-hidden animate-slide-up"
+      style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+
+      {/* Preview de imagem */}
+      {fileType === 'image' && url && (
+        <div className="relative">
+          <img src={url} alt="preview"
+            className="w-full max-h-48 object-cover"
+            style={{ display: 'block' }} />
+          {/* X no canto da imagem */}
+          <button onClick={onCancel}
+            className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-110 active:scale-95"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Preview de documento */}
+      {fileType === 'file' && (
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: 'rgba(59,130,246,0.12)' }}>
+            <FileText size={20} style={{ color: '#60a5fa' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{file.name}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">{sizeMB}</p>
+          </div>
+          {/* X no documento */}
+          <button onClick={onCancel}
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 active:scale-95"
+            style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#f87171' }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Barra de ação: cancel + send */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-[var(--border)]">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          {fileType === 'image'
+            ? <p className="text-xs text-[var(--text-muted)] truncate">📷 {file.name} · {sizeMB}</p>
+            : null
+          }
+        </div>
+        <button onClick={onCancel}
+          className="px-3 py-1.5 rounded-xl text-xs font-medium border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1.5">
+          <X size={12} /> Cancelar
+        </button>
+        <button onClick={onSend} disabled={sending}
+          className="px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
+          style={{ backgroundColor: '#2563eb', color: 'white' }}>
+          {sending
+            ? <><Loader2 size={12} className="animate-spin" /> Enviando...</>
+            : <><Send size={12} /> Enviar</>
+          }
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Componente: gravação de áudio ───────────────────────────────────────────
+function RecordingBar({ onStop, onCancel }) {
+  const [duration, setDuration] = useState(0)
+  const canvasRef = useRef(null)
+  const analyserRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const animRef = useRef(null)
+  const streamRef = useRef(null)
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    let timer
+    const start = async () => {
+      if (startedRef.current) return
+      startedRef.current = true
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        streamRef.current = stream
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+        const analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 64
+        audioCtx.createMediaStreamSource(stream).connect(analyser)
+        analyserRef.current = analyser
+
+        // Waveform animation
+        const canvas = canvasRef.current
+        if (canvas) {
+          const ctx = canvas.getContext('2d')
+          const data = new Uint8Array(analyser.frequencyBinCount)
+          const draw = () => {
+            animRef.current = requestAnimationFrame(draw)
+            analyser.getByteFrequencyData(data)
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            const bw = (canvas.width / data.length) * 1.8
+            let x = 0
+            for (let i = 0; i < data.length; i++) {
+              const h = Math.max(2, (data[i] / 255) * canvas.height * 0.85)
+              const alpha = 0.3 + (data[i] / 255) * 0.7
+              ctx.fillStyle = `rgba(59,130,246,${alpha})`
+              ctx.beginPath()
+              if (ctx.roundRect) ctx.roundRect(x, (canvas.height - h) / 2, bw - 1, h, 2)
+              else ctx.rect(x, (canvas.height - h) / 2, bw - 1, h)
+              ctx.fill()
+              x += bw
+            }
+          }
+          draw()
+        }
+
+        // Escolhe o melhor formato suportado pelo browser
+        // OGG/OPUS = compatível com WhatsApp Android
+        // MP4/AAC = compatível com iOS
+        // WEBM = fallback
+        const mimeType =
+          MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' :
+          MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' :
+          MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' :
+          'audio/webm'
+
+        const mr = new MediaRecorder(stream, { mimeType })
+        mediaRecorderRef.current = mr
+        chunksRef.current = []
+        // timeslice=100ms: coleta dados a cada 100ms para blob mais preciso
+        mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+        mr.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: mimeType })
+          onStop(blob, mimeType)
+          stream.getTracks().forEach(t => t.stop())
+          cancelAnimationFrame(animRef.current)
+          audioCtx.close()
+        }
+        mr.start(100)  // coleta a cada 100ms
+
+        // Timer
+        timer = setInterval(() => setDuration(d => d + 1), 1000)
+      } catch (err) {
+        console.error('Mic error:', err)
+        onCancel()
+      }
+    }
+    start()
+    return () => {
+      clearInterval(timer)
+      cancelAnimationFrame(animRef.current)
+      streamRef.current?.getTracks().forEach(t => t.stop())
+    }
+  }, [])
+
+  const stop = () => mediaRecorderRef.current?.stop()
+
+  const cancel = () => {
+    mediaRecorderRef.current?.stop()
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    cancelAnimationFrame(animRef.current)
+    onCancel()
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+      style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+      {/* REC indicator */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+        <span className="text-xs font-mono font-bold text-red-400">{formatDuration(duration)}</span>
+      </div>
+
+      {/* Waveform */}
+      <canvas ref={canvasRef} width={160} height={32} className="flex-1 rounded-lg"
+        style={{ backgroundColor: 'rgba(59,130,246,0.05)' }} />
+
+      {/* Cancelar */}
+      <button onClick={cancel}
+        className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0">
+        <Trash2 size={15} />
+      </button>
+
+      {/* Enviar */}
+      <button onClick={stop}
+        className="p-1.5 rounded-lg flex-shrink-0 transition-all"
+        style={{ backgroundColor: '#2563eb', color: 'white' }}>
+        <Check size={15} />
+      </button>
+    </div>
+  )
+}
+
+// ─── Componente: preview de áudio antes de enviar ────────────────────────────
+function AudioPreview({ blob, onSend, onCancel, sending }) {
+  const [url, setUrl] = useState(null)
+
+  useEffect(() => {
+    const u = URL.createObjectURL(blob)
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [blob])
+
+  if (!url) return null
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+      style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+      <div className="flex-1">
+        <AudioPlayer url={url} isAgent={false} />
+      </div>
+      <button onClick={onCancel}
+        className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 flex-shrink-0">
+        <X size={15} />
+      </button>
+      <button onClick={onSend} disabled={sending}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 flex items-center gap-1 disabled:opacity-50"
+        style={{ backgroundColor: '#2563eb', color: 'white' }}>
+        {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+        Enviar
+      </button>
+    </div>
+  )
+}
+
+// ─── Componente principal: ChatPanel ─────────────────────────────────────────
+export default function ChatPanel() {
+  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal } = useApp()
+  const [messages, setMessages] = useState([])
+  const [currentColumn, setCurrentColumn] = useState(null)
+  const [assigneeName, setAssigneeName] = useState('')
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingInit, setLoadingInit] = useState(false)
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [isLive, setIsLive] = useState(false)
+  const [moveToast, setMoveToast] = useState(null)
+  // Áudio
+  const [recordingMode, setRecordingMode] = useState(false) // gravando
+  const [audioBlob, setAudioBlob] = useState(null)          // preview de áudio
+  const [pendingFile, setPendingFile] = useState(null)       // preview de imagem/arquivo { file, url, fileType }
+  const [sendingAudio, setSendingAudio] = useState(false)
+  // Refs
+  const messagesEndRef = useRef(null)
+  const scrollRef = useRef(null)
+  const prevScrollHeight = useRef(0)
+  const fileInputRef = useRef(null)
+  const imageInputRef = useRef(null)
+
+  // ── Socket status ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    import('../../lib/socket').then(({ getSocket }) => {
+      const s = getSocket()
+      const onC = () => setIsLive(true)
+      const onD = () => setIsLive(false)
+      s.on('connect', onC); s.on('disconnect', onD)
+      if (s.connected) setIsLive(true)
+      return () => { s.off('connect', onC); s.off('disconnect', onD) }
+    })
+  }, [])
+
+  // ── Mensagem nova em tempo real ────────────────────────────────────────────
+  useSocket('new_message', ({ conversationId, message }) => {
+    if (!selectedLead || String(conversationId) !== String(selectedLead.id)) return
+    setMessages(prev => prev.find(m => m.id === message.id) ? prev : [...prev, message])
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+  })
+
+  // ── Sync ao trocar de lead ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedLead) return
+    setCurrentColumn(selectedLead.column)
+    setAssigneeName(selectedLead.assigneeName || '')
+    setMessages([])
+    setHasMore(false)
+    setLoadingInit(true)
+    api.getMessages(selectedLead.id)
+      .then(data => { setMessages(data.messages); setHasMore(data.hasMore) })
+      .catch(console.error)
+      .finally(() => setLoadingInit(false))
+  }, [selectedLead?.id])
+
+  useEffect(() => {
+    if (!loadingInit && messages.length) setTimeout(() => messagesEndRef.current?.scrollIntoView(), 100)
+  }, [loadingInit, selectedLead?.id])
+
+  useEffect(() => {
+    if (loadingMore) prevScrollHeight.current = scrollRef.current?.scrollHeight || 0
+    else if (scrollRef.current && prevScrollHeight.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevScrollHeight.current
+      prevScrollHeight.current = 0
+    }
+  }, [messages.length, loadingMore])
+
+  const loadOlder = useCallback(async () => {
+    if (!selectedLead || !hasMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const data = await api.getMessages(selectedLead.id, messages[0]?.id)
+      setMessages(prev => [...data.messages, ...prev])
+      setHasMore(data.hasMore)
+    } catch (e) { console.error(e) }
+    finally { setLoadingMore(false) }
+  }, [selectedLead, messages, hasMore, loadingMore])
+
+  // ── Mover coluna ──────────────────────────────────────────────────────────
+  // handleMove é chamado tanto pelo ColumnMover quanto pelas etiquetas na conversa
+  // Para 'agendado' e 'aguardando_pagamento' abre o modal antes de mover
+  const handleMove = useCallback(async (column) => {
+    if (!selectedLead) return
+
+    if (column === 'agendado') {
+      setScheduleModal({ lead: selectedLead })
+      return  // modal faz a chamada à API + atualiza estado
+    }
+
+    if (column === 'aguardando_pagamento') {
+      setPaymentModal({ lead: selectedLead })
+      return  // modal faz a chamada à API + atualiza estado
+    }
+
+    await api.moveLead(selectedLead.id, column)
+    setCurrentColumn(column)
+    const col = ALL_COLUMNS.find(c => c.id === column)
+    setMoveToast({ text: `Movido → ${col?.label}`, color: col?.color || '#3b82f6' })
+    setTimeout(() => setMoveToast(null), 3000)
+    setSelectedLead({ ...selectedLead, column })
+  }, [selectedLead, setSelectedLead, setScheduleModal, setPaymentModal])
+
+  // ── Enviar texto ──────────────────────────────────────────────────────────
+  const handleSend = async () => {
+    if (!input.trim() || !selectedLead || sending) return
+    const content = input.trim(); setInput(''); setSending(true)
+    const opt = { id: `opt-${Date.now()}`, sender: 'agent', content, timestamp: new Date().toISOString(), attachments: [] }
+    setMessages(prev => [...prev, opt])
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    try { await api.sendMessage(selectedLead.id, content) }
+    catch (e) { console.error(e) }
+    finally { setSending(false) }
+  }
+
+  // ── Enviar arquivo (imagem/documento) ─────────────────────────────────────
+  // Seleciona arquivo → mostra preview com X para cancelar antes de enviar
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !selectedLead) return
+    const isImage = file.type.startsWith('image/')
+    const fileType = isImage ? 'image' : 'file'
+    const url = isImage ? URL.createObjectURL(file) : null
+    setPendingFile({ file, url, fileType })
+  }
+
+  // Confirma e envia o arquivo após preview
+  const handleSendFile = async () => {
+    if (!pendingFile || !selectedLead) return
+    const { file, url, fileType } = pendingFile
+    setPendingFile(null)
+    const opt = {
+      id: `opt-${Date.now()}`, sender: 'agent', content: '', timestamp: new Date().toISOString(),
+      attachments: [{ id: 'opt', fileType, url: url || '', filename: file.name, fileSize: file.size }]
+    }
+    setMessages(prev => [...prev, opt])
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      await api.sendAttachment(selectedLead.id, fd)
+    } catch (e) { console.error(e) }
+  }
+
+  // ── Áudio: parou de gravar → preview ──────────────────────────────────────
+  const handleRecordStop = (blob, mimeType) => {
+    setRecordingMode(false)
+    setAudioBlob({ blob, mimeType: mimeType || 'audio/webm' })
+  }
+
+  // ── Áudio: enviar ─────────────────────────────────────────────────────────
+  const handleSendAudio = async () => {
+    if (!audioBlob || !selectedLead) return
+    const { blob, mimeType } = audioBlob
+    // Extensão correta por MIME type
+    const ext = mimeType.includes('ogg') ? 'ogg' :
+                mimeType.includes('mp4') ? 'm4a' : 'webm'
+    const filename = `audio.${ext}`
+
+    setSendingAudio(true)
+    const previewUrl = URL.createObjectURL(blob)
+    const opt = {
+      id: `opt-${Date.now()}`, sender: 'agent', content: '', timestamp: new Date().toISOString(),
+      attachments: [{ id: 'opt', fileType: 'audio', url: previewUrl, filename, fileSize: blob.size }]
+    }
+    setMessages(prev => [...prev, opt])
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    try {
+      const fd = new FormData()
+      fd.append('file', blob, filename)
+      await api.sendAttachment(selectedLead.id, fd)
+    } catch (e) { console.error(e) }
+    finally { setSendingAudio(false); setAudioBlob(null) }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
+
+  if (!selectedLead) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3 bg-[var(--bg-secondary)]">
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
+          <Send size={24} className="text-blue-400" />
+        </div>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">Nenhuma conversa aberta</p>
+        <p className="text-xs text-[var(--text-muted)]">Clique em um card do kanban</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-[var(--bg-secondary)] relative">
+      {/* Toast */}
+      {moveToast && (
+        <div className="absolute top-3 left-3 right-3 z-50 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium animate-slide-up shadow-lg"
+          style={{ backgroundColor: moveToast.color + '20', color: moveToast.color, border: `1px solid ${moveToast.color}40` }}>
+          <ArrowRight size={14} />{moveToast.text}
+        </div>
+      )}
+
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+          {selectedLead.avatar}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{selectedLead.name}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-[var(--text-muted)] font-mono truncate">{selectedLead.phone}</p>
+            {assigneeName && (
+              <>
+                <span className="text-[var(--border)]">·</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-3.5 h-3.5 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold" style={{ fontSize: '7px' }}>
+                    {assigneeName.slice(0, 1)}
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)] truncate">{assigneeName.split(' ')[0]}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
+            style={{ backgroundColor: isLive ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)', color: isLive ? '#10b981' : '#6b7280' }}>
+            {isLive ? <><Wifi size={10} /><span>Live</span></> : <><WifiOff size={10} /><span>Off</span></>}
+          </div>
+          <button className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors">
+            <Phone size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Barra: etapa atual + produto + agente ── */}
+      <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-2 flex-wrap flex-shrink-0">
+        {/* Etapa atual — destaque visual, label principal */}
+        <ColumnMover currentColumn={currentColumn || selectedLead.column} onMove={handleMove} />
+        {selectedLead.product && (
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
+            {selectedLead.product}
+          </span>
+        )}
+        <div className="ml-auto">
+          <AgentAssigner
+            conversationId={selectedLead.id}
+            currentAssigneeName={assigneeName}
+            onAssigned={agent => setAssigneeName(agent.name)}
+          />
+        </div>
+      </div>
+
+      {/* ── Etiquetas ── */}
+      <LabelsPanel
+        conversationId={selectedLead.id}
+        initialLabels={selectedLead.labels || []}
+        currentColumn={currentColumn || selectedLead.column}
+        onColumMigrate={handleMove}
+      />
+
+      {/* ── Mensagens ── */}
+      <div ref={scrollRef}
+        onScroll={() => { if (scrollRef.current?.scrollTop < 60) loadOlder() }}
+        className="flex-1 overflow-y-auto px-4 py-3">
+        {loadingMore && (
+          <div className="flex justify-center mb-3">
+            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] px-3 py-1.5 rounded-full"
+              style={{ backgroundColor: 'var(--bg-hover)' }}>
+              <Loader2 size={12} className="animate-spin" /> Carregando...
+            </div>
+          </div>
+        )}
+        {hasMore && !loadingMore && (
+          <button onClick={loadOlder}
+            className="w-full flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] py-2 mb-2 hover:bg-[var(--bg-hover)] rounded-lg">
+            <ChevronUp size={12} /> Ver mensagens anteriores
+          </button>
+        )}
+        {loadingInit
+          ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[var(--text-muted)]" /></div>
+          : groupByDate(messages).map((item, i) =>
+              item.type === 'date'
+                ? <DateSeparator key={`date-${i}`} label={item.label} />
+                : <MessageBubble key={item.msg.id} msg={item.msg} />
+            )
+        }
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* ── Área de input ── */}
+      <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0">
+        {/* Gravando */}
+        {recordingMode && (
+          <RecordingBar
+            onStop={handleRecordStop}
+            onCancel={() => setRecordingMode(false)}
+          />
+        )}
+
+        {/* Preview de áudio gravado */}
+        {!recordingMode && audioBlob && !pendingFile && (
+          <AudioPreview
+            blob={audioBlob.blob}
+            onSend={handleSendAudio}
+            onCancel={() => setAudioBlob(null)}
+            sending={sendingAudio}
+          />
+        )}
+
+        {/* Preview de imagem ou arquivo (com X para cancelar) */}
+        {!recordingMode && pendingFile && (
+          <FilePreview
+            pending={pendingFile}
+            onSend={handleSendFile}
+            onCancel={() => {
+              if (pendingFile.url) URL.revokeObjectURL(pendingFile.url)
+              setPendingFile(null)
+            }}
+            sending={false}
+          />
+        )}
+
+        {/* Input de texto normal */}
+        {!recordingMode && !audioBlob && !pendingFile && (
+          <>
+            {/* Toolbar */}
+            <div className="flex items-center gap-1 mb-2">
+              <button onClick={() => imageInputRef.current?.click()}
+                title="Enviar imagem"
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-blue-400 transition-colors">
+                <ImageIcon size={16} />
+              </button>
+              <button onClick={() => fileInputRef.current?.click()}
+                title="Enviar arquivo"
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-blue-400 transition-colors">
+                <Paperclip size={16} />
+              </button>
+              <input ref={imageInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" className="hidden" onChange={handleFileChange} />
+            </div>
+
+            {/* Textarea + mic + send */}
+            <div className="flex items-end gap-2 rounded-xl p-2"
+              style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <button className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors flex-shrink-0">
+                <Smile size={16} />
+              </button>
+              <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder="Digite uma mensagem..."
+                rows={1}
+                className="flex-1 bg-transparent resize-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] leading-relaxed"
+                style={{ maxHeight: '100px', minHeight: '24px' }} />
+
+              {/* Mic ou Send */}
+              {input.trim() ? (
+                <button onClick={handleSend} disabled={sending}
+                  className="p-2 rounded-lg transition-all flex-shrink-0 disabled:opacity-40"
+                  style={{ backgroundColor: '#2563eb', color: 'white' }}>
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              ) : (
+                <button onClick={() => setRecordingMode(true)}
+                  title="Gravar áudio"
+                  className="p-2 rounded-lg transition-all flex-shrink-0 hover:scale-110"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+                  <Mic size={16} />
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)] text-center mt-1.5">Enter para enviar · Shift+Enter nova linha</p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
