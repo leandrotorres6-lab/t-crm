@@ -36,6 +36,12 @@ io.on('connection', s => {
 })
 
 app.use(cors())
+
+// Cache headers para respostas estáticas
+app.use((req, res, next) => {
+  res.set('X-Powered-By', 'T-CRM')
+  next()
+})
 app.use(express.json({ limit: '50mb' }))
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
 

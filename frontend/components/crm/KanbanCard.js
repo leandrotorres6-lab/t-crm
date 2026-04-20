@@ -41,7 +41,7 @@ function labelColor(str) {
   return ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16'][Math.abs(h) % 8]
 }
 
-export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
+const KanbanCard = function KanbanCard({ lead, onDragStart, onDragEnd }) {
   const { selectedLead, setSelectedLead, unreadCounts, setScheduleModal, setPaymentModal, applyPendingMove } = useApp()
   const isSelected = selectedLead?.id === lead.id
   const color = PRODUCT_COLORS[lead.product] || '#3b82f6'
@@ -248,3 +248,5 @@ export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
     </div>
   )
 }
+
+export default KanbanCard
