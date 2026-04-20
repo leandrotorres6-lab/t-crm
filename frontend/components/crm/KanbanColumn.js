@@ -66,17 +66,8 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
         }
 
         kanbanCache.set(columnId, 1, data)
-        if (silent) {
-          setLeads(prev => {
-            if (!pendingMoves || Object.keys(pendingMoves).length === 0) return data.items
-            return data.items.map(item => {
-              const p = pendingMoves[item.id]
-              return p ? p.lead : item
-            })
-          })
-        } else {
-          setLeads(data.items)
-        }
+        // Sempre atualiza direto — hiddenIds cuida de esconder cards em movimento
+        setLeads(data.items)
         setHasMore(data.hasMore)
         setTotal(data.total)
         setPage(1)
@@ -95,13 +86,26 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
       loadingRef.current = false
       if (!silent) setLoading(false)
     }
-  }, [columnId, currentAgent?.id, pendingMoves])
+  }, [columnId, currentAgent?.id])
 
   // Monta → carrega imediatamente
   useEffect(() => {
     loadLeads(1, false)
     return () => clearTimeout(retryRef.current)
   }, [columnId, currentAgent?.id])
+
+  // Escuta evento customizado de remoção imediata de card
+  useEffect(() => {
+    const handler = (e) => {
+      const { leadId, fromCol } = e.detail
+      if (fromCol === columnId) {
+        setLeads(prev => prev.filter(l => l.id !== leadId))
+        setTotal(prev => Math.max(0, prev - 1))
+      }
+    }
+    window.addEventListener('tcrm:lead-moved', handler)
+    return () => window.removeEventListener('tcrm:lead-moved', handler)
+  }, [columnId])
 
   // refreshToken muda → recarrega em background
   useEffect(() => {
@@ -136,20 +140,29 @@ export default function KanbanColumn({ columnId, refreshToken, onDrop }) {
     if (columnId === 'agendado') { setScheduleModal({ lead: leadData }); return }
     if (columnId === 'aguardando_pagamento') { setPaymentModal({ lead: leadData }); return }
 
-    // Otimismo instantâneo
+    // Otimismo instantâneo — avisa todas as colunas via evento global
     applyPendingMove(leadData, columnId)
-    setLeads(prev => prev.filter(l => l.id !== leadData.id))
-    setTotal(prev => Math.max(0, prev - 1))
+    // Adiciona na destino
+    setLeads(prev => prev.find(l => l.id === leadData.id) ? prev : [{ ...leadData, column: columnId }, ...prev])
+    setTotal(prev => prev + 1)
+    // Remove da origem via evento (a coluna de origem escuta e remove imediatamente)
+    window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+      detail: { leadId: leadData.id, fromCol: leadData.column, toCol: columnId }
+    }))
     kanbanCache.invalidate(leadData.column)
     kanbanCache.invalidate(columnId)
 
     api.moveLead(leadData.id, columnId, leadData.column)
       .then(() => {
-        setLeads(prev => prev.find(l => l.id === leadData.id) ? prev : [{ ...leadData, column: columnId }, ...prev])
-        setTotal(prev => prev + 1)
         onDrop && onDrop(leadData.id, leadData.column, columnId)
       })
-      .catch(() => loadLeads(1, true, false))
+      .catch(() => {
+        // Reverte em caso de erro
+        window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+          detail: { leadId: leadData.id, fromCol: columnId, toCol: leadData.column }
+        }))
+        loadLeads(1, false)
+      })
   }
 
   const color = COL_COLORS[columnId] || '#3b82f6'

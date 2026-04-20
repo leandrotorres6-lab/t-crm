@@ -56,7 +56,7 @@ export function AppProvider({ children }) {
     setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: 1 }))
   })
 
-  useSocket('lead_moved', ({ id, column }) => {
+  useSocket('lead_moved', ({ id, column, fromColumn }) => {
     clearPendingMove(String(id))
     setSelectedLeadRaw(prev => {
       if (prev && String(prev.id) === String(id)) return { ...prev, column }

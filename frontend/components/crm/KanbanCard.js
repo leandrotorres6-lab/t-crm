@@ -92,10 +92,13 @@ export default function KanbanCard({ lead, onDragStart, onDragEnd }) {
       onDragStart={(e) => {
         e.dataTransfer.setData('application/json', JSON.stringify(lead))
         e.currentTarget.classList.add('dragging')
+        // Marca como "saindo" imediatamente — coluna vai esconder via hiddenIds
+        e.currentTarget.style.opacity = '0.3'
         setMenuOpen(false)
       }}
       onDragEnd={(e) => {
         e.currentTarget.classList.remove('dragging')
+        e.currentTarget.style.opacity = '1'
         if (onDragEnd) onDragEnd(e)
       }}
       onClick={() => setSelectedLead(lead)}
