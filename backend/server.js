@@ -739,10 +739,26 @@ app.post('/api/messages/:leadId/attachment', upload.single('file'), async (req, 
 })
 
 app.post('/api/conversations/:id/read', async (req, res) => {
-  const { id } = req.params
+  const id = String(req.params.id)
+  const now = new Date().toISOString()
+
+  // Supabase — fonte de verdade
+  let updatedAt = now
+  if (db.DB_READY()) {
+    const ts = await db.resetUnread(id).catch(() => null)
+    if (ts) updatedAt = ts
+  }
+
+  // Cache memória
   store.resetUnread(id)
-  io.emit('unread_update', { conversationId: id, count: 0, updatedAt: updatedAt })
-  res.json({ ok: true })
+
+  // Notifica frontend com timestamp
+  io.emit('unread_update', { conversationId: id, count: 0, updatedAt })
+
+  // Chatwoot — para de enviar eventos de unread
+  if (CHATWOOT_READY) cw.markConversationRead(id).catch(() => {})
+
+  res.json({ ok: true, updatedAt })
 })
 
 // ─── CONTATOS ────────────────────────────────────────────────────────────────
