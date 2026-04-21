@@ -70,7 +70,21 @@ async function poll() {
   isPolling = true
 
   try {
-    const updated = await fetchUpdatedConversations()
+    // Só página 1 — conversas mais recentes primeiro (25 mais ativas)
+    // A que recebeu mensagem nova estará aqui por causa do sort=last_activity_at
+    let convs
+    try {
+      convs = await deps.cw.getConversations({
+        page: 1, status: 'open',
+        inboxId: deps.targetInboxId || undefined,
+      })
+    } catch { isPolling = false; return }
+    if (!convs?.length) { isPolling = false; return }
+
+    // Filtra só as que mudaram desde o último check
+    const updated = lastGlobalCheck > 0
+      ? convs.filter(c => (c.last_activity_at || 0) > lastGlobalCheck)
+      : []
 
     for (const conv of updated) {
       const convId = String(conv.id)
