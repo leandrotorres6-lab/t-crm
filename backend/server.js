@@ -738,7 +738,7 @@ app.post('/api/messages/:leadId/attachment', upload.single('file'), async (req, 
   } catch (e) { console.error('[Attachment]', e.message); res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/conversations/:id/read', (req, res) => {
+app.post('/api/conversations/:id/read', async (req, res) => {
   const { id } = req.params
   store.resetUnread(id)
   io.emit('unread_update', { conversationId: id, count: 0 })
@@ -1097,7 +1097,7 @@ app.post('/api/conversations/:id/typing', (req, res) => {
 })
 
 // ─── WEBHOOK CHATWOOT ────────────────────────────────────────────────────────
-app.post('/api/chatwoot/webhook', (req, res) => {
+app.post('/api/chatwoot/webhook', async (req, res) => {
   const { event, data } = req.body
   if (!data) return res.json({ ok: true })
 
