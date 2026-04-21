@@ -17,7 +17,7 @@ async function fetchJSON(path, options = {}) {
 export const api = {
   getColumns: () => fetchJSON('/kanban/columns'),
   getColumnLeads: (col, page = 1, agentId, role) =>
-    fetchJSON(`/kanban/${col}?page=${page}&limit=5${agentId ? `&agentId=${agentId}` : ''}${role ? `&role=${role}` : ''}`),
+    fetchJSON(`/kanban/${col}?page=${page}&limit=15${agentId ? `&agentId=${agentId}` : ''}${role ? `&role=${role}` : ''}`),
   moveLead: (id, column, fromColumn) => fetchJSON(`/kanban/${id}/move`, { method: 'PATCH', body: JSON.stringify({ column, fromColumn }) }),
   scheduleLead: (id, scheduledAt, observacao) => fetchJSON(`/kanban/${id}/schedule`, { method: 'PATCH', body: JSON.stringify({ scheduledAt, observacao }) }),
 

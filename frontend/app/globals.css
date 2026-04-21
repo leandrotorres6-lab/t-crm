@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+/* Fonts loaded async via layout.js preload links */
 
 :root {
   --font-outfit: 'Outfit', sans-serif;
@@ -75,6 +75,52 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ── Performance ────────────────────────────────────────────────── */
+/* GPU acceleration for scrollable containers */
+.kanban-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  will-change: scroll-position;
+}
+
+/* Prevent layout recalc during animations */
+.kanban-card-wrap {
+  contain: layout style;
+  will-change: transform, opacity;
+}
+
+/* Hardware-accelerated transitions */
+.slide-chat {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Reduce paint area */
+.sidebar-item {
+  isolation: isolate;
+}
+
+/* ── Performance ────────────────────────────────────────────────── */
+.kanban-column, .konban-card {
+  will-change: transform;
+}
+
+/* Scrollbars finas e elegantes */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+/* Texto mais nítido */
+* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+/* line-clamp */
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* tabular numbers para contadores */
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
 /* ── Animações ──────────────────────────────────────────────────── */
 @keyframes slide-in-right {

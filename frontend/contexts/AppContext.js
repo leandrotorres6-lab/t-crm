@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { useSocket } from '../lib/socket'
 
 const AppContext = createContext({})
@@ -122,16 +122,19 @@ export function AppProvider({ children }) {
     fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/conversations/${id}/read`, { method: 'POST' }).catch(() => {})
   }, [])
 
+  const value = useMemo(() => ({
+    currentAgent, login, logout,
+    selectedLead, setSelectedLead,
+    sidebarOpen, setSidebarOpen,
+    scheduleModal, setScheduleModal,
+    paymentModal, setPaymentModal,
+    unreadCounts,
+    pendingMoves, applyPendingMove, clearPendingMove,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [currentAgent, selectedLead, sidebarOpen, scheduleModal, paymentModal, unreadCounts, pendingMoves])
+
   return (
-    <AppContext.Provider value={{
-      currentAgent, login, logout,
-      selectedLead, setSelectedLead,
-      sidebarOpen, setSidebarOpen,
-      scheduleModal, setScheduleModal,
-      paymentModal, setPaymentModal,
-      unreadCounts,
-      pendingMoves, applyPendingMove, clearPendingMove,
-    }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   )

@@ -3,6 +3,8 @@ const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
+const compression = require('compression')
+const zlib = require('zlib')
 const multer = require('multer')
 const cw = require('./chatwoot')
 const store = require('./store')
@@ -36,6 +38,27 @@ io.on('connection', s => {
 })
 
 app.use(cors())
+app.use(compression())  // gzip todas as respostas — reduz payload 60-80%
+
+// Compressão gzip para respostas grandes
+app.use((req, res, next) => {
+  const ae = req.headers['accept-encoding'] || ''
+  if (ae.includes('gzip')) {
+    const orig = res.json.bind(res)
+    res.json = (data) => {
+      const json = JSON.stringify(data)
+      if (json.length > 1024) {
+        zlib.gzip(json, (err, buf) => {
+          if (err) return orig(data)
+          res.set('Content-Encoding', 'gzip')
+          res.set('Content-Type', 'application/json')
+          res.send(buf)
+        })
+      } else orig(data)
+    }
+  }
+  next()
+})
 
 // Cache headers para respostas estáticas
 app.use((req, res, next) => {
@@ -248,34 +271,52 @@ app.get('/api/kanban/columns', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Índice em memória — O(1) por coluna (evita filter O(n) em cada request)
+let _colIdx = null
+const _buildIdx = (map) => {
+  const idx = {}
+  for (const c of Object.values(map)) {
+    const col = c.column || 'leads'
+    if (!idx[col]) idx[col] = []
+    idx[col].push(c)
+  }
+  // Pré-ordena cada coluna: não lidas → mais recentes
+  for (const col of Object.keys(idx)) {
+    idx[col].sort((a, b) => {
+      const ua = a.unreadCount || 0, ub = b.unreadCount || 0
+      if (ua !== ub) return ub - ua
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
+  }
+  return idx
+}
+// Invalida índice sempre que o cache mudar
+const _origInvalidate = store.invalidateCache.bind(store)
+store.invalidateCache = () => { _colIdx = null; _origInvalidate() }
+
 app.get('/api/kanban/:column', async (req, res) => {
   try {
     const { column } = req.params
-    const { page = 1, limit = 5, agentId, role } = req.query
+    const { page = 1, limit = 15, agentId, role } = req.query
     const pg = parseInt(page), lm = parseInt(limit)
 
-    // Retorna do cache imediatamente se disponível
-    let all = store.getCache()
-    if (all) {
-      all = Object.values(all)
-    } else {
-      // Cache expirado: inicia fetch em background e responde vazio (frontend vai retentar)
-      if (!fetchingConversations) {
-        getAllConversations().catch(e => console.warn('bg fetch error:', e.message))
-      }
-      // Responde com dados do store local enquanto o cache não está pronto
-      // Isso evita o spinner longo
-      all = []
+    const cacheMap = store.getCache()
+    if (!cacheMap) {
+      if (!fetchingConversations) getAllConversations().catch(() => {})
+      return res.json({ items: [], total: 0, page: pg, hasMore: false, cacheReady: false })
     }
 
-    let filtered = all.filter(c => c.column === column)
+    // Usa índice pré-ordenado — O(1) lookup
+    if (!_colIdx) _colIdx = _buildIdx(cacheMap)
+    let filtered = _colIdx[column] || []
+
     if (role === 'vendedor' && agentId) {
       filtered = filtered.filter(c => c.assignedTo === agentId)
     }
 
     const offset = (pg - 1) * lm
     const items = filtered.slice(offset, offset + lm)
-    res.json({ items, total: filtered.length, page: pg, hasMore: offset + items.length < filtered.length, cacheReady: !!store.getCache() })
+    res.json({ items, total: filtered.length, page: pg, hasMore: offset + items.length < filtered.length, cacheReady: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
