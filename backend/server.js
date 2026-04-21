@@ -497,10 +497,14 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 })
 
 // ─── AUTH MIDDLEWARE ─────────────────────────────────────────────────────────
+const JWT_ENABLED = !!process.env.JWT_SECRET  // só ativo quando JWT_SECRET estiver configurado
+
 function requireAuth(req, res, next) {
-  // Webhook do Chatwoot não precisa de auth
+  // Se JWT não estiver configurado, passa direto (modo compatibilidade)
+  if (!JWT_ENABLED) return next()
+
+  // Rotas públicas
   if (req.path.includes('/chatwoot/webhook')) return next()
-  // Push subscribe também não (chamado antes do login em alguns casos)
   if (req.path.includes('/push/vapid-key')) return next()
 
   const auth = req.headers.authorization
@@ -508,7 +512,7 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Token não fornecido' })
   }
   try {
-    const decoded = jwt.verify(auth.slice(7), JWT_SECRET)
+    const decoded = jwt.verify(auth.slice(7), process.env.JWT_SECRET)
     req.user = decoded
     next()
   } catch (err) {
@@ -518,6 +522,7 @@ function requireAuth(req, res, next) {
 
 // Aplica auth em todas as rotas /api/* exceto login, status e webhook
 app.use('/api', (req, res, next) => {
+  if (!JWT_ENABLED) return next()
   const publicPaths = ['/status', '/auth/login', '/debug', '/chatwoot/webhook', '/push/vapid-key']
   if (publicPaths.some(p => req.path === p || req.path.startsWith(p))) return next()
   return requireAuth(req, res, next)

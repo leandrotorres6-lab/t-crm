@@ -23,7 +23,12 @@ async function fetchJSON(path, options = {}) {
 
   if (res.status === 401) {
     clearAuthToken()
-    if (typeof window !== 'undefined') window.location.reload()
+    // Remove agent from storage to force login screen without page reload
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tcrm_agent')
+      // Dispatch event so AppContext reacts without reload loop
+      window.dispatchEvent(new Event('tcrm:session-expired'))
+    }
     throw new Error('Sessão expirada')
   }
   if (!res.ok) {

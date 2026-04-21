@@ -22,13 +22,17 @@ export function AppProvider({ children }) {
     } catch {}
   }, [])
 
-  const login = useCallback((agent) => {
+  const login = useCallback((agent, token) => {
     setCurrentAgent(agent)
-    try { localStorage.setItem('tcrm_agent', JSON.stringify(agent)) } catch {}
+    try {
+      localStorage.setItem('tcrm_agent', JSON.stringify(agent))
+      if (token) setAuthToken(token)
+    } catch {}
   }, [])
 
   const logout = useCallback(() => {
     setCurrentAgent(null)
+    clearAuthToken()
     try { localStorage.removeItem('tcrm_agent') } catch {}
   }, [])
 
@@ -80,6 +84,15 @@ export function AppProvider({ children }) {
       }))
     }
   })
+
+  // Escuta evento de sessão expirada (token 401)
+  useEffect(() => {
+    const handler = () => {
+      setCurrentAgent(null)
+    }
+    window.addEventListener('tcrm:session-expired', handler)
+    return () => window.removeEventListener('tcrm:session-expired', handler)
+  }, [])
 
   // Escuta mensagens do service worker (deep link de notificação)
   useEffect(() => {
@@ -154,8 +167,10 @@ export function AppProvider({ children }) {
     paymentModal, setPaymentModal,
     unreadCounts,
     pendingMoves, applyPendingMove, clearPendingMove,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [currentAgent, selectedLead, sidebarOpen, scheduleModal, paymentModal, unreadCounts, pendingMoves])
+  // Only primitive/state values in deps — functions are stable via useCallback
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [currentAgent, selectedLead, sidebarOpen, scheduleModal, paymentModal,
+       JSON.stringify(unreadCounts), JSON.stringify(pendingMoves)])
 
   return (
     <AppContext.Provider value={value}>
