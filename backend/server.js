@@ -516,10 +516,14 @@ function requireAuth(req, res, next) {
 // Rate limit no login
 app.use('/api/auth/login', loginLimiter)
 
-// Aplica auth em todas as rotas /api/* exceto login, status e webhook
+// Aplica auth em todas as rotas /api/* exceto rotas públicas
 app.use('/api', (req, res, next) => {
   if (!JWT_ENABLED) return next()
-  const publicPaths = ['/status', '/auth/login', '/debug', '/chatwoot/webhook', '/push/vapid-key']
+  const publicPaths = [
+    '/status', '/auth/login', '/debug',
+    '/chatwoot/webhook', '/push/vapid-key',
+    '/agents',  // necessário antes do login para mostrar lista de agentes
+  ]
   if (publicPaths.some(p => req.path === p || req.path.startsWith(p))) return next()
   return requireAuth(req, res, next)
 })
