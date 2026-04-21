@@ -1,126 +1,70 @@
-// ─── Chatwoot Polling Service v2 ──────────────────────────────────────────────
-// Polling com paginação completa, deduplicação persistente e busca de mensagem real
+// ─── Chatwoot Polling Service v3 ──────────────────────────────────────────────
+// Detecção por last_non_activity_message.id — sem depender de last_activity_at
+// 1 chamada à API por ciclo (página 1 = 25 conversas mais recentes)
 
 const POLL_INTERVAL = 3000
 
-// Estado em memória
-const activityCache = new Map()     // convId → last_activity_at
-const processedMsgs = new Set()     // msgIds processados (últimos 500)
-let lastGlobalCheck = 0             // timestamp epoch da última verificação global
-let pollTimer = null
-let isPolling = false
-let deps = null                     // dependências injetadas
+const lastMsgIdCache = new Map()   // convId → último messageId processado
+const processedSet  = new Set()    // deduplica por msgId global (últimos 500)
+let pollTimer   = null
+let isPolling   = false
+let warmDone    = false
+let deps        = null
 
-// ── Paginação: busca até 4 páginas (100 conversas) ───────────────────────────
-async function fetchUpdatedConversations() {
-  const { cw, targetInboxId } = deps
-  const results = []
-  const maxPages = 4
-
-  for (let page = 1; page <= maxPages; page++) {
-    try {
-      const convs = await cw.getConversations({
-        page, status: 'open',
-        inboxId: targetInboxId || undefined,
-      })
-      if (!convs || !convs.length) break
-      results.push(...convs)
-      if (convs.length < 25) break // última página
-    } catch (e) {
-      if (!e.message?.includes('abort')) console.warn(`[Poll] Página ${page} falhou:`, e.message)
-      break
-    }
-  }
-
-  // Filtra: só conversas com atividade após lastGlobalCheck
-  if (lastGlobalCheck > 0) {
-    return results.filter(c => (c.last_activity_at || 0) > lastGlobalCheck)
-  }
-  return results
-}
-
-// ── Busca última mensagem real de uma conversa ───────────────────────────────
-async function fetchLatestMessage(convId) {
-  try {
-    const messages = await deps.cw.getMessages(convId)
-    if (!messages || !messages.length) return null
-    // Última mensagem não-atividade (tipo 0 ou 1, ignora tipo 2=activity)
-    const real = messages.filter(m => m.message_type !== 2)
-    return real.length ? real[real.length - 1] : null
-  } catch {
-    return null
-  }
-}
-
-// ── Deduplicação: verifica e registra msgId ──────────────────────────────────
-function isDuplicate(msgId) {
-  if (processedMsgs.has(msgId)) return true
-  processedMsgs.add(msgId)
-  // Limpa se ficar grande demais
-  if (processedMsgs.size > 500) {
-    const first = processedMsgs.values().next().value
-    processedMsgs.delete(first)
+// ─── Deduplicação global ──────────────────────────────────────────────────────
+function seen(msgId) {
+  const id = String(msgId)
+  if (processedSet.has(id)) return true
+  processedSet.add(id)
+  if (processedSet.size > 500) {
+    processedSet.delete(processedSet.values().next().value)
   }
   return false
 }
 
-// ── Ciclo principal de polling ───────────────────────────────────────────────
+// ─── Ciclo principal ──────────────────────────────────────────────────────────
 async function poll() {
-  if (isPolling) return
+  if (isPolling || !warmDone) return
   isPolling = true
 
   try {
-    // Só página 1 — conversas mais recentes primeiro (25 mais ativas)
-    // A que recebeu mensagem nova estará aqui por causa do sort=last_activity_at
-    let convs
-    try {
-      convs = await deps.cw.getConversations({
-        page: 1, status: 'open',
-        inboxId: deps.targetInboxId || undefined,
-      })
-    } catch { isPolling = false; return }
+    const convs = await deps.cw.getConversations({
+      page: 1,
+      status: 'open',
+      inboxId: deps.targetInboxId || undefined,
+    })
     if (!convs?.length) { isPolling = false; return }
 
-    // Filtra só as que mudaram desde o último check
-    const updated = lastGlobalCheck > 0
-      ? convs.filter(c => (c.last_activity_at || 0) > lastGlobalCheck)
-      : []
+    for (const conv of convs) {
+      const convId   = String(conv.id)
+      const lastMsg  = conv.last_non_activity_message
+      if (!lastMsg?.id) continue
 
-    for (const conv of updated) {
-      const convId = String(conv.id)
-      const lastActivity = conv.last_activity_at || 0
-      const cachedActivity = activityCache.get(convId) || 0
+      const msgId    = String(lastMsg.id)
+      const cached   = lastMsgIdCache.get(convId)
 
-      // Sem atividade nova para esta conversa
-      if (lastActivity <= cachedActivity) continue
-      activityCache.set(convId, lastActivity)
+      // Sem mudança nesta conversa
+      if (cached === msgId) continue
 
-      // Busca mensagem real da API (não confia só em last_non_activity_message)
-      let msg = null
-      const quickMsg = conv.last_non_activity_message
-      if (quickMsg?.id && !isDuplicate(String(quickMsg.id))) {
-        msg = quickMsg
-      } else if (quickMsg?.id && isDuplicate(String(quickMsg.id))) {
-        // Já processou essa mensagem, pode ser outra mudança (label, assign)
-        continue
-      } else {
-        // Sem mensagem rápida — busca via API
-        const fetched = await fetchLatestMessage(convId)
-        if (!fetched || isDuplicate(String(fetched.id))) continue
-        msg = fetched
-      }
+      // Atualiza cache
+      lastMsgIdCache.set(convId, msgId)
 
-      if (!msg) continue
+      // Primeira vez que vemos esta conversa (warmup perdido) → ignora
+      if (!cached) continue
 
-      // Processa a mensagem
-      const mappedMsg = deps.mapMessage(msg)
-      const content = msg.content || (msg.attachments?.length ? '[Arquivo]' : '')
-      const mt = msg.message_type
+      // Duplicata global → ignora
+      if (seen(msgId)) continue
+
+      // ── Nova mensagem detectada ──────────────────────────────────────────────
+      const content  = lastMsg.content || (lastMsg.attachments?.length ? '[Arquivo]' : '')
+      const mt       = lastMsg.message_type
       const isInbound = mt === 0 || mt === '0' || mt === 'incoming'
-      const senderName = msg.sender?.name || conv.meta?.sender?.name || ''
+      const senderName = lastMsg.sender?.name || conv.meta?.sender?.name || ''
       const now = new Date().toISOString()
 
-      console.log(`[Poll] Nova msg conv=${convId} msgId=${msg.id} type=${isInbound ? 'IN' : 'OUT'} sender="${senderName}" content="${content.slice(0, 40)}"`)
+      console.log(`[Poll] Nova msg conv=${convId} msgId=${msgId} type=${isInbound ? 'IN' : 'OUT'} sender="${senderName}" content="${content.slice(0, 40)}"`)
+
+      const mappedMsg = deps.mapMessage(lastMsg)
 
       // Atualiza store em memória
       deps.store.updateLastMessage(convId, content)
@@ -129,12 +73,12 @@ async function poll() {
       }
 
       // Atualiza Supabase
-      if (deps.db.DB_READY && deps.db.DB_READY()) {
+      if (deps.db.DB_READY?.()) {
         deps.db.updateLastMessage(convId, content, now).catch(() => {})
         if (isInbound) deps.db.incrementUnread(convId).catch(() => {})
       }
 
-      // Emite via Socket.IO
+      // Emite new_message via Socket.IO
       deps.io.emit('new_message', {
         conversationId: convId,
         message: { ...mappedMsg, senderName },
@@ -144,6 +88,7 @@ async function poll() {
         senderName,
       })
 
+      // Emite unread_update
       if (isInbound) {
         const count = deps.store.incrementUnread(convId)
         deps.io.emit('unread_update', {
@@ -153,68 +98,53 @@ async function poll() {
         })
       }
     }
-
-    // Atualiza checkpoint global
-    if (updated.length > 0) {
-      const maxActivity = Math.max(...updated.map(c => c.last_activity_at || 0))
-      if (maxActivity > lastGlobalCheck) lastGlobalCheck = maxActivity
-    }
-
   } catch (e) {
     if (!e.message?.includes('abort')) {
-      console.warn('[Poll] Erro no ciclo:', e.message)
+      console.warn('[Poll] Erro:', e.message)
     }
   }
 
   isPolling = false
 }
 
-// ── Warmup: preenche cache sem emitir eventos ────────────────────────────────
+// ─── Warmup: preenche cache sem emitir ───────────────────────────────────────
 async function warmUp() {
   try {
-    const { cw, targetInboxId } = deps
-    let maxActivity = 0
-
-    for (let page = 1; page <= 4; page++) {
-      const convs = await cw.getConversations({
-        page, status: 'open',
-        inboxId: targetInboxId || undefined,
-      })
-      if (!convs || !convs.length) break
-
-      for (const conv of convs) {
-        const convId = String(conv.id)
-        const activity = conv.last_activity_at || 0
-        activityCache.set(convId, activity)
-        if (activity > maxActivity) maxActivity = activity
-        if (conv.last_non_activity_message?.id) {
-          processedMsgs.add(String(conv.last_non_activity_message.id))
-        }
+    const convs = await deps.cw.getConversations({
+      page: 1,
+      status: 'open',
+      inboxId: deps.targetInboxId || undefined,
+    })
+    for (const conv of convs || []) {
+      const convId = String(conv.id)
+      const lastMsg = conv.last_non_activity_message
+      if (lastMsg?.id) {
+        const msgId = String(lastMsg.id)
+        lastMsgIdCache.set(convId, msgId)
+        processedSet.add(msgId)
       }
-
-      if (convs.length < 25) break
     }
-
-    lastGlobalCheck = maxActivity
-    console.log(`[Poll] Cache aquecido: ${activityCache.size} conversas, checkpoint: ${new Date(maxActivity * 1000).toISOString().slice(0,19)}`)
+    console.log(`[Poll] Cache aquecido: ${lastMsgIdCache.size} conversas`)
+    warmDone = true
   } catch (e) {
     console.warn('[Poll] Warmup falhou:', e.message)
+    warmDone = true  // continua mesmo se warmup falhar
   }
 }
 
-// ── Start / Stop ─────────────────────────────────────────────────────────────
+// ─── Start / Stop ─────────────────────────────────────────────────────────────
 function start(injected) {
   if (pollTimer) return
   deps = injected
-  console.log(`[Poll] ✅ Polling iniciado (intervalo: ${POLL_INTERVAL / 1000}s, até 100 conversas)`)
-
+  console.log(`[Poll] ✅ Polling iniciado — detecção por messageId (${POLL_INTERVAL / 1000}s)`)
   warmUp().then(() => {
     pollTimer = setInterval(poll, POLL_INTERVAL)
   })
 }
 
 function stop() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  clearInterval(pollTimer)
+  pollTimer = null
   console.log('[Poll] ⏹ Parado')
 }
 
