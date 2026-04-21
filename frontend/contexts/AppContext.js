@@ -64,6 +64,7 @@ export function AppProvider({ children }) {
 
   useSocket('unread_update', ({ conversationId, count, updatedAt }) => {
     const id = String(conversationId)
+    console.log(`[Socket] unread_update conv=${id} count=${count}`)
     const incoming = updatedAt || new Date().toISOString()
     const current = unreadUpdatedAt.current[id] || '2000-01-01'
 
@@ -91,10 +92,16 @@ export function AppProvider({ children }) {
   })
 
   // Nova mensagem recebida → sobe card, incrementa badge, atualiza horário
-  useSocket('new_message', ({ conversationId, message, lastMessageAt, content, isInbound, senderName: sn }) => {
+  useSocket('new_message', (payload) => {
+    const { conversationId, message, lastMessageAt, content, isInbound, senderName: sn } = payload
+    console.log('[Socket] new_message RECEBIDO:', { conversationId, isInbound, content: (content||'').slice(0,30) })
+    
     // Deduplicação por message_id — evita duplo processamento em reconexão
     const msgId = message?.id || `${conversationId}-${lastMessageAt}`
-    if (processedMessages.current.has(msgId)) return
+    if (processedMessages.current.has(msgId)) {
+      console.log(`[Socket] DUPLICADO ignorado msgId=${msgId}`)
+      return
+    }
     processedMessages.current.add(msgId)
     // Mantém só os últimos 200 para evitar memory leak
     if (processedMessages.current.size > 200) {
@@ -220,8 +227,11 @@ export function AppProvider({ children }) {
     setSelectedLeadRaw(lead)
     if (!lead) return
     const id = String(lead.id)
+    // Optimistic update — zera imediatamente no estado local
     setUnreadCounts(prev => ({ ...prev, [id]: 0 }))
-    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/conversations/${id}/read`, { method: 'POST' }).catch(() => {})
+    if (unreadUpdatedAt?.current) unreadUpdatedAt.current[id] = new Date().toISOString()
+    // Persiste no backend com auth token
+    import('../lib/api').then(({ api }) => api.markAsRead(id)).catch(() => {})
   }, [])
 
   const value = useMemo(() => ({
@@ -234,8 +244,10 @@ export function AppProvider({ children }) {
     pendingMoves, applyPendingMove, clearPendingMove,
   // Only primitive/state values in deps — functions are stable via useCallback
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // unreadCounts and pendingMoves are new objects on every setState call,
+  // so they're safe to use directly as deps (reference equality works)
   }), [currentAgent, selectedLead, sidebarOpen, scheduleModal, paymentModal,
-       JSON.stringify(unreadCounts), JSON.stringify(pendingMoves)])
+       unreadCounts, pendingMoves])
 
   return (
     <AppContext.Provider value={value}>

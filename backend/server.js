@@ -1132,10 +1132,13 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     const conversationId = String(data.conversation?.id || data.conversation_id)
     const now = new Date().toISOString()
     const content = data.content || (data.attachments?.length ? '[Arquivo]' : '')
-    // Chatwoot pode enviar message_type como número (0=in, 1=out) ou string ('incoming'/'outgoing')
+    // Filtra mensagens privadas (notas internas do Chatwoot)
+    if (data.private === true || data.message_type === 2) return res.json({ ok: true })
+
+    // message_type: 0=incoming(cliente), 1=outgoing(agente/bot), 2=activity, 3=template
     const mt = data.message_type
-    const isInbound = mt === 0 || mt === '0' || mt === 'incoming' || mt === 'income'
-    console.log(`[WH] message_type raw="${mt}" typeof=${typeof mt} isInbound=${isInbound}`)
+    const isInbound = mt === 0 || mt === '0' || mt === 'incoming' || mt === 'inbound'
+    console.log(`[WH] message_type="${mt}" typeof=${typeof mt} isInbound=${isInbound} private=${data.private} conv=${String(data.conversation?.id || data.conversation_id)}`)
 
     // Atualiza lastMessage + lastMessageAt no cache sem invalidar tudo
     store.updateLastMessage(conversationId, content)
