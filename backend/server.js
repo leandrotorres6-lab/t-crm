@@ -24,6 +24,7 @@ const zlib = require('zlib')
 const multer = require('multer')
 const cw = require('./chatwoot')
 const store = require('./store')
+const db = require('./db')
 
 const app = express()
 const server = http.createServer(app)
@@ -358,24 +359,35 @@ app.get('/api/kanban/:column', async (req, res) => {
     const { column } = req.params
     const { page = 1, limit = 15, agentId, role } = req.query
     const pg = parseInt(page), lm = parseInt(limit)
+    const offset = (pg - 1) * lm
 
+    // ── Supabase: query direta < 50ms ─────────────────────────────────────────
+    if (db.DB_READY()) {
+      const assignedTo = role === 'vendedor' && agentId ? agentId : null
+      const result = await db.getByColumn(column, { limit: lm, offset, assignedTo })
+      if (result) {
+        return res.json({
+          items: result.items,
+          total: result.total,
+          page: pg,
+          hasMore: offset + result.items.length < result.total,
+          cacheReady: true,
+          source: 'supabase',
+        })
+      }
+    }
+
+    // ── Fallback: cache em memória ────────────────────────────────────────────
     const cacheMap = store.getCache()
     if (!cacheMap) {
       if (!fetchingConversations) getAllConversations().catch(() => {})
       return res.json({ items: [], total: 0, page: pg, hasMore: false, cacheReady: false })
     }
-
-    // Usa índice pré-ordenado — O(1) lookup
     if (!_colIdx) _colIdx = _buildIdx(cacheMap)
     let filtered = _colIdx[column] || []
-
-    if (role === 'vendedor' && agentId) {
-      filtered = filtered.filter(c => c.assignedTo === agentId)
-    }
-
-    const offset = (pg - 1) * lm
+    if (role === 'vendedor' && agentId) filtered = filtered.filter(c => c.assignedTo === agentId)
     const items = filtered.slice(offset, offset + lm)
-    res.json({ items, total: filtered.length, page: pg, hasMore: offset + items.length < filtered.length, cacheReady: true })
+    res.json({ items, total: filtered.length, page: pg, hasMore: offset + items.length < filtered.length, cacheReady: true, source: 'memory' })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -386,12 +398,11 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
     store.setColumn(id, column)
     store.invalidateCache()
 
-    // Atualiza label no Chatwoot em background
-    if (CHATWOOT_READY) {
-      cw.setKanbanLabel(id, column)
-        .then(() => {})
-        .catch(e => console.warn('Label update failed:', e.message))
-    }
+    // Atualiza Supabase e Chatwoot em paralelo (background)
+    Promise.all([
+      db.DB_READY() ? db.moveColumn(id, column) : Promise.resolve(),
+      CHATWOOT_READY ? cw.setKanbanLabel(id, column).catch(e => console.warn('Label update failed:', e.message)) : Promise.resolve(),
+    ]).catch(() => {})
 
     io.emit('lead_moved', { id, column, fromColumn })
     res.json({ id, column })
@@ -1051,7 +1062,13 @@ app.post('/api/chatwoot/webhook', (req, res) => {
     // Atualiza lastMessage + lastMessageAt no cache sem invalidar tudo
     store.updateLastMessage(conversationId, content)
     store.updateLastMessageAt(conversationId, content, now)
-    _colIdx = null  // força rebuild do índice na próxima query
+    _colIdx = null
+
+    // Atualiza Supabase em background
+    if (db.DB_READY()) {
+      db.updateLastMessage(conversationId, content, now).catch(() => {})
+      if (isInbound) db.incrementUnread(conversationId).catch(() => {})
+    }
 
     console.log(`[Webhook] Nova msg conv=${conversationId} type=${isInbound?'inbound':'outbound'} content="${content.slice(0,50)}"`)
 
@@ -1158,10 +1175,19 @@ server.listen(PORT, async () => {
   console.log('\n📌 Webhook URL para configurar no Chatwoot:')
   console.log('   http://SEU-IP:' + PORT + '/api/chatwoot/webhook')
   console.log('\n🔍 Diagnóstico: http://localhost:' + PORT + '/api/debug')
+  // Inicializa Supabase
+  db.init()
+
   // Pré-aquece o cache assim que o servidor sobe
   console.log('⏳ Pré-carregando conversas...')
   getAllConversations()
-    .then(all => console.log(`✅ Cache pronto: ${all.length} conversas`))
+    .then(async all => {
+      console.log(`✅ Cache pronto: ${all.length} conversas`)
+      // Sincroniza para o Supabase em background (não bloqueia)
+      if (db.DB_READY()) {
+        db.upsertMany(all).then(() => console.log('✅ Supabase sincronizado'))
+      }
+    })
     .catch(e => console.warn('⚠️  Pré-carga falhou:', e.message))
 
   // Mantém o cache sempre aquecido — atualiza a cada 50s
