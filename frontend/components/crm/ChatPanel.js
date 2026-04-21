@@ -1015,6 +1015,151 @@ function AudioPreview({ blob, onSend, onCancel, sending }) {
 }
 
 // ─── Componente principal: ChatPanel ─────────────────────────────────────────
+// ─── TemplateManager ─────────────────────────────────────────────────────────
+function TemplateManager({ templates, setTemplates, onClose }) {
+  const [newTitle, setNewTitle] = useState('')
+  const [newContent, setNewContent] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const create = async () => {
+    if (!newTitle.trim() || !newContent.trim()) { setError('Preencha título e mensagem'); return }
+    setSaving(true); setError('')
+    try {
+      const d = await api.createTemplate(newTitle.trim(), newContent.trim())
+      setTemplates(prev => [...prev, d.template])
+      setNewTitle(''); setNewContent('')
+    } catch { setError('Erro ao salvar') }
+    finally { setSaving(false) }
+  }
+
+  const remove = async (id) => {
+    await api.deleteTemplate(id).catch(() => {})
+    setTemplates(prev => prev.filter(t => t.id !== id))
+  }
+
+  const startEdit = (t) => {
+    setEditingId(t.id); setEditTitle(t.title); setEditContent(t.content)
+  }
+
+  const saveEdit = async () => {
+    if (!editTitle.trim() || !editContent.trim()) return
+    setSaving(true)
+    try {
+      // Deleta e recria (simplificado)
+      await api.deleteTemplate(editingId)
+      const d = await api.createTemplate(editTitle.trim(), editContent.trim())
+      setTemplates(prev => prev.map(t => t.id === editingId ? d.template : t))
+      setEditingId(null)
+    } catch { setError('Erro ao salvar') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', maxHeight: '85vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] flex-shrink-0">
+          <div>
+            <h3 className="text-base font-bold text-[var(--text-primary)]">Mensagens Rápidas</h3>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Use <span className="font-mono bg-blue-500/10 text-blue-400 px-1 rounded">/</span> no chat para acessar</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Lista de templates */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+          {templates.map(t => (
+            <div key={t.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
+              {editingId === t.id ? (
+                /* Modo edição */
+                <div className="p-3 space-y-2" style={{ backgroundColor: 'rgba(59,130,246,0.04)' }}>
+                  <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                    placeholder="Título"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+                  <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+                    placeholder="Mensagem... use {{nome}} para o nome do cliente"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                    style={{ backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} disabled={saving}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                      style={{ backgroundColor: '#2563eb', color: 'white' }}>
+                      {saving ? '...' : 'Salvar'}
+                    </button>
+                    <button onClick={() => setEditingId(null)}
+                      className="px-4 py-1.5 rounded-lg text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Modo visualização */
+                <div className="flex items-start gap-3 p-3 hover:bg-[var(--bg-hover)] transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">{t.title}</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed line-clamp-2">{t.content}</p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => startEdit(t)}
+                      title="Editar"
+                      className="p-1.5 rounded-lg hover:bg-blue-500/10 text-[var(--text-muted)] hover:text-blue-400 transition-colors">
+                      <Pencil size={13} />
+                    </button>
+                    <button onClick={() => remove(t.id)}
+                      title="Excluir"
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Adicionar novo */}
+        <div className="px-5 py-4 border-t border-[var(--border)] flex-shrink-0"
+          style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}>
+          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Nova mensagem rápida</p>
+          <div className="space-y-2">
+            <input value={newTitle} onChange={e => { setNewTitle(e.target.value); setError('') }}
+              placeholder='Título (ex: "Saudação inicial")'
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+              style={{ backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+            <textarea value={newContent} onChange={e => { setNewContent(e.target.value); setError('') }}
+              placeholder={'Mensagem... use {{nome}} para o nome do cliente'}
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
+              style={{ backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={create} disabled={saving || !newTitle.trim() || !newContent.trim()}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 transition-all"
+                style={{ backgroundColor: '#2563eb', color: 'white' }}>
+                {saving ? <Loader2 size={14} className="animate-spin mx-auto" /> : '+ Adicionar'}
+              </button>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              💡 Use <span className="font-mono text-blue-400">{'{{nome}}'}</span> para inserir o nome do cliente automaticamente
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── NotesPanel ──────────────────────────────────────────────────────────────
 function NotesPanel({ conversationId, notes, setNotes }) {
   const [noteInput, setNoteInput] = useState('')
@@ -1117,6 +1262,7 @@ export default function ChatPanel() {
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
   const [slashMenu, setSlashMenu] = useState({ open: false, query: '', filtered: [] })
+  const [showTplManager, setShowTplManager] = useState(false)
   const textareaRef = useRef(null)
   const [contactTyping, setContactTyping] = useState(false)
   const typingTimeoutRef = useRef(null)
@@ -1481,6 +1627,15 @@ export default function ChatPanel() {
         </div>
       )}
 
+      {/* ── Modal: Gerenciar Templates ── */}
+      {showTplManager && (
+        <TemplateManager
+          templates={templates}
+          setTemplates={setTemplates}
+          onClose={() => setShowTplManager(false)}
+        />
+      )}
+
       {/* ── Área de input ── */}
       <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0">
         {/* Gravando */}
@@ -1580,10 +1735,18 @@ export default function ChatPanel() {
                       <span className="text-xs text-[var(--text-muted)]">· buscando "{slashMenu.query}"</span>
                     )}
                   </div>
-                  <button onClick={() => setSlashMenu(s => ({ ...s, open: false }))}
-                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-                    <X size={12} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { setSlashMenu(s => ({ ...s, open: false })); setShowTplManager(true) }}
+                      title="Gerenciar templates"
+                      className="p-1 rounded-md text-blue-400 hover:bg-blue-400/10 transition-colors">
+                      <Pencil size={12} />
+                    </button>
+                    <button onClick={() => setSlashMenu(s => ({ ...s, open: false }))}
+                      className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                      <X size={12} />
+                    </button>
+                  </div>
                 </div>
 
                 {slashMenu.filtered.length === 0 ? (
@@ -1626,11 +1789,15 @@ export default function ChatPanel() {
                   </div>
                 )}
 
-                <div className="px-3 py-1.5 border-t border-[var(--border)]"
+                <div className="flex items-center justify-between px-3 py-1.5 border-t border-[var(--border)]"
                   style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    ↑↓ navegar · Enter selecionar · Esc fechar · <span className="text-blue-400">⚙</span> gerencie em Configurações
-                  </p>
+                  <p className="text-xs text-[var(--text-muted)]">↑↓ navegar · Enter selecionar · Esc fechar</p>
+                  <button
+                    onClick={() => { setSlashMenu(s => ({ ...s, open: false })); setShowTplManager(true) }}
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors py-0.5 px-1.5 rounded-md hover:bg-blue-400/10">
+                    <Pencil size={10} />
+                    Editar
+                  </button>
                 </div>
               </div>
             )}
