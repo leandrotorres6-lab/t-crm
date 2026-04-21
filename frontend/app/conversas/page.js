@@ -116,7 +116,7 @@ function ConversasList() {
   const [allLeads, setAllLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const { selectedLead, setSelectedLead, unreadCounts, currentAgent } = useApp()
+  const { selectedLead, setSelectedLead, unreadCounts, currentAgent, readTimestamps } = useApp()
 
   const load = useCallback(async (force = false) => {
     // Mostra cache imediatamente (pode ser de sessão anterior)
@@ -137,12 +137,12 @@ function ConversasList() {
       persistentCache.set(INBOX_CACHE_KEY, convs)
       // Preserva unreadCount=0 do estado local (abertas recentemente)
       setAllLeads(prev => {
-        const localZero = {}
-        prev.forEach(l => { if (l.unreadCount === 0) localZero[l.id] = true })
-        return convs.map(c => ({
-          ...c,
-          unreadCount: localZero[c.id] ? 0 : c.unreadCount
-        }))
+        const now = Date.now()
+        return convs.map(c => {
+          const readAt = readTimestamps?.current?.[c.id] || 0
+          if (now - readAt < 30000) return { ...c, unreadCount: 0 }
+          return c
+        })
       })
     } catch (e) {
       console.error('inbox load error:', e)
@@ -166,7 +166,9 @@ function ConversasList() {
         ...prev[idx],
         lastMessage: text || prev[idx].lastMessage,
         lastMessageAt: ts,
-        unreadCount: isInbound !== false ? (prev[idx].unreadCount || 0) + 1 : prev[idx].unreadCount || 0,
+        unreadCount: isInbound !== false && (Date.now() - (readTimestamps?.current?.[id] || 0)) > 3000
+          ? (prev[idx].unreadCount || 0) + 1
+          : prev[idx].unreadCount || 0,
       }
       const updated = [card, ...prev.filter((_, i) => i !== idx)]
       persistentCache.set(INBOX_CACHE_KEY, updated)
@@ -176,8 +178,11 @@ function ConversasList() {
 
   // Zera badge quando usuário abre a conversa
   useSocket('unread_update', ({ conversationId, count }) => {
+    const id = String(conversationId)
+    const readAt = readTimestamps?.current?.[id] || 0
+    if (count > 0 && Date.now() - readAt < 10000) return
     setAllLeads(prev => prev.map(l =>
-      l.id === String(conversationId) ? { ...l, unreadCount: count } : l
+      l.id === id ? { ...l, unreadCount: count } : l
     ))
   })
 

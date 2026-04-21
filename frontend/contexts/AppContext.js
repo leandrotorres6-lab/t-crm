@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { setAuthToken, clearAuthToken } from '../lib/api'
 import { useSocket } from '../lib/socket'
 
@@ -8,10 +8,15 @@ const AppContext = createContext({})
 export function AppProvider({ children }) {
   const [currentAgent, setCurrentAgent] = useState(null)
   const [selectedLead, setSelectedLeadRaw] = useState(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    // Mobile: sidebar fechada por padrão
+    if (typeof window !== 'undefined') return window.innerWidth >= 768
+    return true
+  })
   const [scheduleModal, setScheduleModal] = useState(null)
   const [paymentModal, setPaymentModal] = useState(null)
   const [unreadCounts, setUnreadCounts] = useState({})
+  const readTimestamps = React.useRef({})  // leadId → timestamp when marked read
   const [pendingMoves, setPendingMoves] = useState({})
 
   // Persiste agente logado
@@ -54,10 +59,16 @@ export function AppProvider({ children }) {
   // ── Socket handlers ─────────────────────────────────────────────────────────
 
   useSocket('unread_update', ({ conversationId, count }) => {
-    setUnreadCounts(prev => ({ ...prev, [String(conversationId)]: count }))
-    // Se count = 0, também invalida cache da coluna para reordenar
+    const id = String(conversationId)
+    // Guarda: se marcamos como lida há menos de 10s, ignora qualquer update de unread > 0
+    const readAt = readTimestamps.current[id] || 0
+    if (count > 0 && Date.now() - readAt < 10000) {
+      console.log(`[Unread] Ignorando update conv=${id} count=${count} — marcada como lida há ${Date.now()-readAt}ms`)
+      return
+    }
+    setUnreadCounts(prev => ({ ...prev, [id]: count }))
     if (count === 0 && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: String(conversationId) } }))
+      window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
     }
   })
 
@@ -73,7 +84,11 @@ export function AppProvider({ children }) {
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {
-      setUnreadCounts(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
+      const readAt = readTimestamps.current[id] || 0
+      // Se abriu a conversa há menos de 3s, não incrementa localmente
+      if (Date.now() - readAt > 3000) {
+        setUnreadCounts(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
+      }
 
       // Som (Web Audio API — sem arquivo externo)
       try {
@@ -195,7 +210,7 @@ export function AppProvider({ children }) {
     sidebarOpen, setSidebarOpen,
     scheduleModal, setScheduleModal,
     paymentModal, setPaymentModal,
-    unreadCounts, setUnreadCounts,
+    unreadCounts, setUnreadCounts, readTimestamps,
     pendingMoves, applyPendingMove, clearPendingMove,
   // Only primitive/state values in deps — functions are stable via useCallback
   // eslint-disable-next-line react-hooks/exhaustive-deps

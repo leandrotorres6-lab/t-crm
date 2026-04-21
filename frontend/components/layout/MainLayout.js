@@ -21,11 +21,17 @@ export default function MainLayout({ children, chat, inbox }) {
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]"
->
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
 
-      {/* Sidebar — igual mobile e desktop */}
-      <Sidebar />
+      {/* Sidebar — desktop: empurra conteúdo | mobile: overlay */}
+      <div className="hidden md:block flex-shrink-0">
+        <Sidebar />
+      </div>
+
+      {/* Sidebar mobile — overlay */}
+      <div className="md:hidden">
+        <Sidebar mobileOverlay />
+      </div>
 
       {/* Área de conteúdo */}
       {isInboxMode ? (

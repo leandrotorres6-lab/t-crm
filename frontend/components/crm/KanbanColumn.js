@@ -46,7 +46,7 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const bottomRef = useRef(null)
   const loadingRef = useRef(false)
   const retryRef = useRef(null)
-  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts } = useApp()
+  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, readTimestamps } = useApp()
 
   const loadLeads = useCallback(async (pageNum = 1, silent = false) => {
     if (loadingRef.current) return
@@ -85,15 +85,17 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           return
         }
         kanbanCache.set(columnId, 1, data)
-        // CRÍTICO: preserva unreadCount do estado local (pode estar mais recente que o banco)
-        // O estado local é zerado ao abrir conversa — não pode ser sobrescrito por fetch antigo
+        // CRÍTICO: preserva unreadCount=0 se foi marcada como lida recentemente
         setLeads(prev => {
-          const localUnread = {}
-          prev.forEach(l => { if (l.unreadCount === 0) localUnread[l.id] = 0 })
-          return data.items.map(item => ({
-            ...item,
-            unreadCount: item.id in localUnread ? localUnread[item.id] : item.unreadCount
-          }))
+          const now = Date.now()
+          return data.items.map(item => {
+            const readAt = readTimestamps?.current?.[item.id] || 0
+            // Se foi marcada como lida há menos de 30s, mantém 0
+            const wasReadRecently = now - readAt < 30000
+            if (wasReadRecently) return { ...item, unreadCount: 0 }
+            // Se estava como 0 no estado local e não há registro de leitura, mantém do banco
+            return item
+          })
         })
         setHasMore(data.hasMore)
         setTotal(data.total)

@@ -24,7 +24,7 @@ const NAV = [
 const STATUS_COLORS = { online: '#10b981', ocupado: '#f59e0b', offline: '#6b7280' }
 const STATUS_LABELS = { online: 'Online', ocupado: 'Ocupado', offline: 'Offline' }
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOverlay = false }) {
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen, currentAgent, logout, unreadCounts } = useApp()
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
@@ -70,6 +70,22 @@ export default function Sidebar() {
   const fileInputRef = useRef(null)
   const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
 
+  // Fecha sidebar mobile ao clicar fora
+  useEffect(() => {
+    if (!mobileOverlay || !sidebarOpen) return
+    const handler = (e) => {
+      // Se clicou fora da sidebar, fecha
+      if (e.target.closest('[data-sidebar]')) return
+      setSidebarOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('touchstart', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler)
+    }
+  }, [mobileOverlay, sidebarOpen])
+
   // Pede permissão de notificação browser ao abrir
   useEffect(() => {
     if (!currentAgent) return
@@ -114,12 +130,25 @@ export default function Sidebar() {
   }
 
   const width = sidebarOpen ? 'w-60' : 'w-16'
+  // Mobile overlay: posição fixa, fecha ao clicar fora
+  const mobileClass = mobileOverlay
+    ? sidebarOpen
+      ? 'fixed top-0 left-0 bottom-0 z-50'
+      : 'fixed top-0 left-0 bottom-0 z-50 -translate-x-full'
+    : ''
 
   return (
-    <aside
-      style={{ backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
-      className={`${width} flex-shrink-0 flex flex-col h-full transition-all duration-300 relative z-20`}
-    >
+    <>
+      {/* Backdrop mobile — fecha ao clicar fora */}
+      {mobileOverlay && sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside
+        style={{ backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
+        data-sidebar
+        className={`${mobileOverlay ? 'w-60' : width} ${mobileClass} flex-shrink-0 flex flex-col h-full transition-all duration-300`}
+      >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-4 h-16 border-b border-white/5">
         {sidebarOpen && (
@@ -299,5 +328,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }

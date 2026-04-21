@@ -200,6 +200,13 @@ export default function KanbanBoard() {
 
       {/* ── Mobile: header da coluna atual ── */}
       <div className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-[var(--border)] flex-shrink-0">
+        {/* Hamburger */}
+        <button onClick={() => setSidebarOpen(true)}
+          className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         {/* Nome + badge + dots */}
         <div className="flex flex-col flex-1 items-center">
           <div className="flex items-center gap-2">
