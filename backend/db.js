@@ -2,25 +2,28 @@
 // Substitui o store.json como fonte de verdade para os leads do kanban
 // O store.json continua existindo para metadados (agendamentos, pagamentos, notas)
 
-const { createClient } = require('@supabase/supabase-js')
-
-const SUPABASE_URL = process.env.SUPABASE_URL || ''
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || ''
-
+let createClient = null
 let supabase = null
 let DB_READY = false
 
 function init() {
+  const SUPABASE_URL = process.env.SUPABASE_URL || ''
+  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || ''
+
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.log('⚠️  Supabase não configurado — usando store.json como fallback')
     return false
   }
   try {
+    // Import lazy para não quebrar build
+    if (!createClient) {
+      createClient = require('@supabase/supabase-js').createClient
+    }
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { persistSession: false },
     })
     DB_READY = true
-    console.log('✅ Supabase conectado')
+    console.log('✅ Supabase conectado:', SUPABASE_URL)
     return true
   } catch (e) {
     console.error('❌ Supabase erro:', e.message)
