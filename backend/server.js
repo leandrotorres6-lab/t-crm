@@ -4,6 +4,15 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const compression = require('compression')
+const webpush = require('web-push')
+
+// VAPID para push notifications
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BC5dEmG-Wrbr87AkZqLdhePfTBBxQQmlxThtG2CH-iz5Xvd1ZQJcLhZvczWb5nPUD8EHxHnOOM8Uu7h86gg33ZA'
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'KQOpbbydw1HsA7SGsZsX5RTOSr-JBZ1z_aFfKRtuiJs'
+webpush.setVapidDetails('mailto:admin@pvcorretora.com.br', VAPID_PUBLIC, VAPID_PRIVATE)
+
+// Subscriptions em memória (migrar para Supabase futuramente)
+const pushSubscriptions = new Map()
 const zlib = require('zlib')
 const multer = require('multer')
 const cw = require('./chatwoot')
@@ -721,9 +730,89 @@ app.get('/api/dashboard', async (req, res) => {
       }))
       .sort((a, b) => b.pagos - a.pagos || b.conversao - a.conversao)
 
-    res.json({ stats, summary, monthlyData, ranking, cancelados: cancelados.length })
+    // Funil de conversão
+    const total = period.length || 1
+    const funnel = [
+      { stage: 'Leads', count: period.filter(c => c.column === 'leads').length, color: '#3b82f6' },
+      { stage: 'Negociação', count: period.filter(c => c.column === 'negociacao').length, color: '#8b5cf6' },
+      { stage: 'Ag. Cotação', count: period.filter(c => c.column === 'aguardando_cotacao').length, color: '#f59e0b' },
+      { stage: 'Agendado', count: period.filter(c => c.column === 'agendado').length, color: '#06b6d4' },
+      { stage: 'Ag. Pgto', count: period.filter(c => c.column === 'aguardando_pagamento').length, color: '#f97316' },
+      { stage: 'Pago', count: period.filter(c => c.column === 'pago').length, color: '#22c55e' },
+    ].map(s => ({ ...s, pct: Math.round((s.count / total) * 100) }))
+
+    // Taxa de conversão geral
+    const convRate = total > 0 ? Math.round((period.filter(c => c.column === 'pago').length / total) * 100) : 0
+
+    res.json({ stats, summary, monthlyData, ranking, cancelados: cancelados.length, funnel, convRate })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
+
+// ─── SEARCH ──────────────────────────────────────────────────────────────────
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q, column, assignee, product, agentId } = req.query
+    let all = await getAllConversations()
+
+    // Filtro por vendedor (se for agente)
+    if (agentId) all = all.filter(c => c.assignedTo === agentId)
+
+    // Filtro por etapa
+    if (column) all = all.filter(c => c.column === column)
+
+    // Filtro por vendedor (nome)
+    if (assignee) all = all.filter(c => (c.assigneeName || '').toLowerCase().includes(assignee.toLowerCase()))
+
+    // Filtro por produto
+    if (product) all = all.filter(c => (c.product || '').toLowerCase().includes(product.toLowerCase()))
+
+    // Busca textual
+    if (q && q.trim()) {
+      const terms = q.trim().toLowerCase().split(/\s+/)
+      all = all.filter(c => {
+        const text = [c.name, c.phone, c.lastMessage, c.product].join(' ').toLowerCase()
+        return terms.every(t => text.includes(t))
+      })
+    }
+
+    // Ordena: não lidas → mais recentes
+    all.sort((a, b) => {
+      const ua = a.unreadCount || 0, ub = b.unreadCount || 0
+      if (ua !== ub) return ub - ua
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
+
+    res.json({ results: all.slice(0, 50), total: all.length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── PUSH NOTIFICATIONS ─────────────────────────────────────────────────────
+app.get('/api/push/vapid-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC })
+})
+
+app.post('/api/push/subscribe', (req, res) => {
+  const { subscription, agentId } = req.body
+  if (!subscription) return res.status(400).json({ error: 'subscription required' })
+  pushSubscriptions.set(agentId || 'anon', subscription)
+  console.log(`[Push] Agente ${agentId} inscrito para notificações`)
+  res.json({ ok: true })
+})
+
+app.delete('/api/push/unsubscribe', (req, res) => {
+  const { agentId } = req.body
+  pushSubscriptions.delete(agentId || 'anon')
+  res.json({ ok: true })
+})
+
+async function sendPushToAll(title, body, data = {}) {
+  const payload = JSON.stringify({ title, body, data, icon: '/icon-192.png', badge: '/icon-192.png' })
+  for (const [agentId, sub] of pushSubscriptions) {
+    webpush.sendNotification(sub, payload).catch(err => {
+      if (err.statusCode === 410) pushSubscriptions.delete(agentId) // expirada
+    })
+  }
+}
 
 // ─── WEBHOOK CHATWOOT ────────────────────────────────────────────────────────
 app.post('/api/chatwoot/webhook', (req, res) => {
@@ -739,6 +828,14 @@ app.post('/api/chatwoot/webhook', (req, res) => {
     if (data.message_type === 0) {
       const count = store.incrementUnread(conversationId)
       io.emit('unread_update', { conversationId, count })
+      // Push notification para todos os agentes inscritos
+      const contactName = data.conversation?.meta?.sender?.name || 'Cliente'
+      const msgText = data.content || (data.attachments?.length ? '📎 Arquivo' : 'Nova mensagem')
+      sendPushToAll(
+        `💬 ${contactName}`,
+        msgText.slice(0, 100),
+        { conversationId, url: '/conversas' }
+      ).catch(() => {})
     }
   }
 

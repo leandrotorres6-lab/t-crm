@@ -1,6 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import KanbanColumn from './KanbanColumn'
+import SearchBar from './SearchBar'
+import { useApp as useAppHook } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
 import { kanbanCache } from '../../lib/kanbanCache'
 import { useSocket } from '../../lib/socket'
@@ -35,8 +37,9 @@ function UnreadBadge({ unreadCounts }) {
 }
 
 export default function KanbanBoard() {
-  const { unreadCounts } = useApp()
+  const { unreadCounts, setSelectedLead } = useApp()
   const [columnCounts, setColumnCounts] = useState({})
+  const [searchResults, setSearchResults] = useState(null)
   const [colRefresh, setColRefresh] = useState({})
   const [notifications, setNotifications] = useState([])
   // Mobile: índice da coluna visível atualmente
@@ -148,25 +151,38 @@ export default function KanbanBoard() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Toolbar desktop ── */}
-      <div className="hidden md:flex items-center justify-between px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-base font-bold text-[var(--text-primary)]">Pipeline CRM</h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">{totalLeads} leads ativos</p>
+      <div className="hidden md:flex flex-col gap-2 px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-base font-bold text-[var(--text-primary)]">Pipeline CRM</h1>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">{searchResults ? `${searchResults.length} resultados` : `${totalLeads} leads ativos`}</p>
+            </div>
+            <UnreadBadge unreadCounts={unreadCounts} />
           </div>
-          <UnreadBadge unreadCounts={unreadCounts} />
+          <div className="flex items-center gap-2">
+            {searchResults && (
+              <span className="text-xs px-2 py-1 rounded-lg text-blue-400"
+                style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
+                Buscando...
+              </span>
+            )}
+            <button onClick={refreshAll} className="btn-ghost" title="Atualizar">
+              <RefreshCw size={14} />
+            </button>
+            <button onClick={() => scrollBy(-1)} className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
+              <ChevronLeft size={16} />
+            </button>
+            <button onClick={() => scrollBy(1)} className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={refreshAll} className="btn-ghost" title="Atualizar">
-            <RefreshCw size={14} />
-          </button>
-          <button onClick={() => scrollBy(-1)} className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
-            <ChevronLeft size={16} />
-          </button>
-          <button onClick={() => scrollBy(1)} className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
-            <ChevronRight size={16} />
-          </button>
-        </div>
+        {/* Barra de busca e filtros */}
+        <SearchBar
+          onResults={results => setSearchResults(results)}
+          onClear={() => setSearchResults(null)}
+        />
       </div>
 
       {/* ── Mobile: header da coluna atual ── */}
@@ -209,6 +225,40 @@ export default function KanbanBoard() {
           </div>
         ))}
       </div>
+
+      {/* ── Resultados de busca ── */}
+      {searchResults && (
+        <div className="hidden md:block flex-1 overflow-y-auto p-4">
+          {searchResults.length === 0 ? (
+            <div className="flex flex-col items-center py-16 gap-3">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
+                <span style={{ fontSize: 24 }}>🔍</span>
+              </div>
+              <p className="text-sm text-[var(--text-muted)]">Nenhum lead encontrado</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {searchResults.map(lead => {
+                const color = {'leads':'#3b82f6','negociacao':'#8b5cf6','aguardando_cotacao':'#f59e0b','agendado':'#06b6d4','lancar_venda':'#10b981','aguardando_pagamento':'#f97316','pago':'#22c55e','sem_retorno':'#6b7280'}[lead.column] || '#6b7280'
+                const colLabel = {'leads':'Leads','negociacao':'Negociação','aguardando_cotacao':'Ag. Cotação','agendado':'Agendado','lancar_venda':'Lançar Venda','aguardando_pagamento':'Ag. Pgto','pago':'Pago ✓','sem_retorno':'Sem Retorno'}[lead.column] || lead.column
+                return (
+                  <div key={lead.id} onClick={() => setSelectedLead(lead)} className="p-3 rounded-xl cursor-pointer hover:scale-[1.02] transition-all"
+                    style={{ backgroundColor: 'var(--bg-card)', border: `1px solid var(--border)`, borderLeft: `3px solid ${color}` }}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: color+'20', color }}>
+                        {lead.avatar}
+                      </div>
+                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{lead.name}</p>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] truncate mb-1.5">{lead.lastMessage}</p>
+                    <span className="text-xs px-1.5 py-0.5 rounded-md font-medium" style={{ backgroundColor: color+'15', color, fontSize:'10px' }}>{colLabel}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Desktop: todas as colunas em scroll horizontal ── */}
       <div className="hidden md:block flex-1 overflow-hidden">

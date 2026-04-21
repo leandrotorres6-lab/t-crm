@@ -8,7 +8,8 @@ import {
   LayoutDashboard, KanbanSquare, Calendar, Users, MessageCircle, Menu, X,
   Sun, Moon, Circle, Wifi, WifiOff, ChevronDown, DollarSign
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { usePush } from '../../lib/usePush'
 
 const NAV = [
   { href: '/crm', icon: KanbanSquare, label: 'CRM' },
@@ -28,6 +29,7 @@ export default function Sidebar() {
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
   const { theme, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
 
   const width = sidebarOpen ? 'w-60' : 'w-16'
 
@@ -102,6 +104,30 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-2 py-3 border-t border-white/5 space-y-1">
+        {/* Push notifications toggle */}
+        {supported && permission !== 'denied' && (
+          <button
+            onClick={subscribed ? unsubscribe : subscribe}
+            disabled={pushLoading}
+            title={!sidebarOpen ? (subscribed ? 'Notificações ativas' : 'Ativar notificações') : undefined}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
+            style={{ color: subscribed ? '#10b981' : '#64748b' }}
+          >
+            <div className="relative flex-shrink-0">
+              {subscribed
+                ? <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                : <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{opacity:0.4}}><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+              }
+              {subscribed && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />}
+            </div>
+            {sidebarOpen && (
+              <span className="text-sm animate-fade-in">
+                {pushLoading ? '...' : subscribed ? 'Notificações ativas' : 'Ativar notificações'}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}

@@ -41,6 +41,22 @@ export const api = {
 
   getDashboard: () => fetchJSON('/dashboard'),
   getInbox: (agentId, role) => fetchJSON(`/inbox${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),
+  getDashboard: (days = 0) => {
+    if (days > 0) {
+      const to = new Date().toISOString().split('T')[0]
+      const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0]
+      return fetchJSON(`/dashboard?from=${from}&to=${to}`)
+    }
+    return fetchJSON('/dashboard')
+  },
+  search: (params) => fetchJSON(`/search?${params}`),
+  getPushKey: () => fetchJSON('/push/vapid-key'),
+  subscribePush: (subscription, agentId) => fetchJSON('/push/subscribe', {
+    method: 'POST', body: JSON.stringify({ subscription, agentId })
+  }),
+  unsubscribePush: (agentId) => fetchJSON('/push/unsubscribe', {
+    method: 'DELETE', body: JSON.stringify({ agentId })
+  }),
   login: (agentId, password) => fetchJSON('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ agentId, password })
