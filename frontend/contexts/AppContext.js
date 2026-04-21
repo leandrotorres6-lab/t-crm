@@ -16,7 +16,9 @@ export function AppProvider({ children }) {
   const [scheduleModal, setScheduleModal] = useState(null)
   const [paymentModal, setPaymentModal] = useState(null)
   const [unreadCounts, setUnreadCounts] = useState({})
-  const readTimestamps = React.useRef({})  // leadId → timestamp when marked read
+  // Mapa de updatedAt por conversa — árbitro de conflitos de unread
+  // leadId → ISO timestamp do último update de unread aceito
+  const unreadUpdatedAt = React.useRef({})
   const [pendingMoves, setPendingMoves] = useState({})
 
   // Persiste agente logado
@@ -58,15 +60,20 @@ export function AppProvider({ children }) {
 
   // ── Socket handlers ─────────────────────────────────────────────────────────
 
-  useSocket('unread_update', ({ conversationId, count }) => {
+  useSocket('unread_update', ({ conversationId, count, updatedAt }) => {
     const id = String(conversationId)
-    // Guarda: se marcamos como lida há menos de 10s, ignora qualquer update de unread > 0
-    const readAt = readTimestamps.current[id] || 0
-    if (count > 0 && Date.now() - readAt < 10000) {
-      console.log(`[Unread] Ignorando update conv=${id} count=${count} — marcada como lida há ${Date.now()-readAt}ms`)
+    const incoming = updatedAt || new Date().toISOString()
+    const current = unreadUpdatedAt.current[id] || '2000-01-01'
+
+    // Regra: só aceita update se timestamp incoming >= current
+    if (incoming < current) {
+      console.log(`[Unread] Ignorando evento desatualizado conv=${id} incoming=${incoming} current=${current}`)
       return
     }
+
+    unreadUpdatedAt.current[id] = incoming
     setUnreadCounts(prev => ({ ...prev, [id]: count }))
+
     if (count === 0 && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
     }
@@ -84,11 +91,8 @@ export function AppProvider({ children }) {
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {
-      const readAt = readTimestamps.current[id] || 0
-      // Se abriu a conversa há menos de 3s, não incrementa localmente
-      if (Date.now() - readAt > 3000) {
-        setUnreadCounts(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
-      }
+      // Não incrementa localmente — aguarda o unread_update do socket com timestamp correto
+      // (evita duplo incremento: socket new_message + unread_update)
 
       // Som (Web Audio API — sem arquivo externo)
       try {
@@ -210,7 +214,7 @@ export function AppProvider({ children }) {
     sidebarOpen, setSidebarOpen,
     scheduleModal, setScheduleModal,
     paymentModal, setPaymentModal,
-    unreadCounts, setUnreadCounts, readTimestamps,
+    unreadCounts, setUnreadCounts, unreadUpdatedAt,
     pendingMoves, applyPendingMove, clearPendingMove,
   // Only primitive/state values in deps — functions are stable via useCallback
   // eslint-disable-next-line react-hooks/exhaustive-deps

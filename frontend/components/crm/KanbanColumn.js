@@ -46,7 +46,7 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const bottomRef = useRef(null)
   const loadingRef = useRef(false)
   const retryRef = useRef(null)
-  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, readTimestamps } = useApp()
+  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, unreadUpdatedAt } = useApp()
 
   const loadLeads = useCallback(async (pageNum = 1, silent = false) => {
     if (loadingRef.current) return
@@ -85,15 +85,18 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           return
         }
         kanbanCache.set(columnId, 1, data)
-        // CRÍTICO: preserva unreadCount=0 se foi marcada como lida recentemente
+        // Merge com timestamps: item do banco tem updatedAt, estado local também
+        // Só aceita unread do banco se for mais recente que o último update local
         setLeads(prev => {
-          const now = Date.now()
+          const prevMap = {}
+          prev.forEach(l => { prevMap[l.id] = l })
           return data.items.map(item => {
-            const readAt = readTimestamps?.current?.[item.id] || 0
-            // Se foi marcada como lida há menos de 30s, mantém 0
-            const wasReadRecently = now - readAt < 30000
-            if (wasReadRecently) return { ...item, unreadCount: 0 }
-            // Se estava como 0 no estado local e não há registro de leitura, mantém do banco
+            const localTs = unreadUpdatedAt?.current?.[item.id] || '2000-01-01'
+            const remoteTs = item.updatedAt || '2000-01-01'
+            // Se o estado local é mais recente (agente leu após este dado), mantém local
+            if (localTs > remoteTs && prevMap[item.id]) {
+              return { ...item, unreadCount: prevMap[item.id].unreadCount }
+            }
             return item
           })
         })

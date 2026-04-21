@@ -1244,7 +1244,7 @@ function NotesPanel({ conversationId, notes, setNotes }) {
 }
 
 export default function ChatPanel() {
-  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove, unreadCounts, setUnreadCounts, readTimestamps } = useApp()
+  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
   const [messages, setMessages] = useState([])
   const [currentColumn, setCurrentColumn] = useState(null)
   const [assigneeName, setAssigneeName] = useState('')
@@ -1330,7 +1330,7 @@ export default function ChatPanel() {
     api.markAsRead(selectedLead.id).catch(() => {})
     const lid = String(selectedLead.id)
     setUnreadCounts(prev => ({ ...prev, [lid]: 0 }))
-    if (readTimestamps?.current) readTimestamps.current[lid] = Date.now()
+    if (unreadUpdatedAt?.current) unreadUpdatedAt.current[lid] = new Date().toISOString()
     // Carrega notas
     api.getNotes(selectedLead.id).then(d => setNotes(d.notes || [])).catch(() => {})
     // Carrega templates (uma vez)

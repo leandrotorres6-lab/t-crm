@@ -60,6 +60,16 @@ async function getMessages(conversationId, before) {
   return data?.payload || []
 }
 
+// Marca conversa como lida no Chatwoot (para Chatwoot parar de contar unread)
+async function markConversationRead(conversationId) {
+  try {
+    return await cw(`/conversations/${conversationId}/read`, { method: 'POST' })
+  } catch (e) {
+    // Falha silenciosa — Supabase já é fonte de verdade
+    console.warn(`[Chatwoot] markRead failed for ${conversationId}:`, e.message)
+  }
+}
+
 async function sendMessage(conversationId, content) {
   return cw(`/conversations/${conversationId}/messages`, {
     method: 'POST',
@@ -252,7 +262,7 @@ function mapConversation(conv, columnOverride) {
         : conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     createdAt: conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     product: detectProduct(lastMsg?.content || ''),
-    unreadCount: conv.unread_count || 0,
+    unreadCount: 0, // Supabase é fonte de verdade — não usar unread_count do Chatwoot
     labels: chatwootLabels,
     status: conv.status,
     contactId: sender.id ? String(sender.id) : null,
@@ -310,7 +320,7 @@ function mapConvSummary(conv) {
       if (LABEL_TO_COLUMN[l.toLowerCase().trim()]) return false
       return true
     }),
-    unreadCount: conv.unread_count || 0,
+    unreadCount: 0, // Supabase é fonte de verdade — não usar unread_count do Chatwoot
     inboxName: conv.meta?.channel || '',
     asCrmLead: mapConversation(conv),
   }
@@ -328,7 +338,7 @@ function detectProduct(text) {
 
 module.exports = {
   resolveColumnFromLabels: resolveColumn,
-  getConversations, getConversation,
+  getConversations, getConversation, markConversationRead,
   getMessages, sendMessage, sendAttachment,
   getAgents, assignAgent, getInboxes,
   getAccountLabels, getConversationLabels, setConversationLabels, setKanbanLabel,

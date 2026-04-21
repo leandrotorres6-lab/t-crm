@@ -70,6 +70,7 @@ function fromRow(row) {
     lastMessage: row.last_message,
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at,  // timestamp de referência para conflitos
     unreadCount: row.unread_count || 0,
     assignedTo: row.assigned_to,
     assigneeName: row.assignee_name,
@@ -180,25 +181,29 @@ async function updateLastMessage(id, content, ts) {
 // ── Incrementa não lidas ──────────────────────────────────────────────────────
 async function incrementUnread(id) {
   if (!DB_READY) return
-  // Usa RPC para incremento atômico
-  const { data, error } = await supabase.rpc('increment_unread', { lead_id: String(id) })
-  if (error) {
-    // Fallback: lê e atualiza
-    const { data: row } = await supabase.from('leads').select('unread_count').eq('id', String(id)).single()
-    if (row) {
-      await supabase.from('leads').update({ unread_count: (row.unread_count || 0) + 1 }).eq('id', String(id))
-    }
+  const now = new Date().toISOString()
+  // Fallback atômico: lê, incrementa, salva com updated_at
+  const { data: row } = await supabase
+    .from('leads').select('unread_count').eq('id', String(id)).single()
+  if (row) {
+    const { error } = await supabase.from('leads')
+      .update({ unread_count: (row.unread_count || 0) + 1, updated_at: now })
+      .eq('id', String(id))
+    if (error) console.error('[DB] incrementUnread error:', error.message)
+    return { unread_count: (row.unread_count || 0) + 1, updated_at: now }
   }
 }
 
 // ── Zera não lidas ────────────────────────────────────────────────────────────
 async function resetUnread(id) {
   if (!DB_READY) return
+  const now = new Date().toISOString()
   const { error } = await supabase
     .from('leads')
-    .update({ unread_count: 0, updated_at: new Date().toISOString() })
+    .update({ unread_count: 0, updated_at: now })
     .eq('id', String(id))
   if (error) console.error('[DB] resetUnread error:', error.message)
+  return now  // retorna timestamp para o caller emitir via socket
 }
 
 // ── Busca textual ─────────────────────────────────────────────────────────────

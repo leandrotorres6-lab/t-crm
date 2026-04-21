@@ -250,22 +250,17 @@ async function getAllConversations() {
     if (meta.observacao) mapped.observacao = meta.observacao
     map[String(conv.id)] = mapped
   })
-  // Preserva unread counts do store local (mais atualizado que o Chatwoot)
-  // REGRA: store.unread é a fonte de verdade local — se estiver zerado, mantém zero
+  // REGRA: unread_count = 0 no mapConversation — Supabase é fonte de verdade
+  // Aplica unread do store local (pode ter incrementado via webhook antes do cache rebuild)
   Object.keys(map).forEach(id => {
     const localUnread = store.getUnread(id)
-    // Se temos registro local do unread, usa ele (pode ser 0 = lido pelo agente)
-    const stateSnapshot = store._state ? store._state() : {}
-    if (id in (stateSnapshot.unread || {})) {
-      map[id].unreadCount = localUnread
-    }
-    // Se não temos registro local, usa o valor do Chatwoot (primeira carga)
+    // Só aplica unread do store se for > 0 (incrementos por webhooks recentes)
+    // Se for 0, mantém 0 (ou seja, não "inventa" unread)
+    map[id].unreadCount = localUnread
   })
   store.setCache(map)
 
-  // Sincroniza para Supabase em background
-  // NÃO sobrescreve unread_count no Supabase com valor do Chatwoot
-  // (apenas upsert sem incluir unread_count para não regredir)
+  // Sincroniza estrutura para Supabase SEM sobrescrever unread_count
   if (typeof db !== 'undefined' && db.DB_READY && db.DB_READY()) {
     const leads = Object.values(map)
     db.upsertManyNoUnread(leads).catch(e => console.warn('Supabase sync error:', e.message))
@@ -1128,10 +1123,14 @@ app.post('/api/chatwoot/webhook', (req, res) => {
     store.updateLastMessageAt(conversationId, content, now)
     _colIdx = null
 
-    // Atualiza Supabase em background
+    // Atualiza Supabase e obtém novo updatedAt para sincronização
+    let unreadUpdatedAt = now
     if (db.DB_READY()) {
       db.updateLastMessage(conversationId, content, now).catch(() => {})
-      if (isInbound) db.incrementUnread(conversationId).catch(() => {})
+      if (isInbound) {
+        const result = await db.incrementUnread(conversationId).catch(() => null)
+        if (result?.updated_at) unreadUpdatedAt = result.updated_at
+      }
     }
 
     console.log(`[Webhook] Nova msg conv=${conversationId} type=${isInbound?'inbound':'outbound'} content="${content.slice(0,50)}"`)
@@ -1147,7 +1146,7 @@ app.post('/api/chatwoot/webhook', (req, res) => {
 
     if (isInbound) {
       const count = store.incrementUnread(conversationId)
-      io.emit('unread_update', { conversationId, count })
+      io.emit('unread_update', { conversationId, count, updatedAt: unreadUpdatedAt })
 
       // Push notification
       const contactName = data.conversation?.meta?.sender?.name || 'Cliente'
