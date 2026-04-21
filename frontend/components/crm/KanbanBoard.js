@@ -2,12 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import KanbanColumn from './KanbanColumn'
 import SearchBar from './SearchBar'
-import { useApp as useAppHook } from '../../contexts/AppContext'
+import { useApp } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
 import { kanbanCache } from '../../lib/kanbanCache'
 import { useSocket } from '../../lib/socket'
 import { ChevronLeft, ChevronRight, RefreshCw, Bell } from 'lucide-react'
-import { useApp } from '../../contexts/AppContext'
 
 const ALL_COLUMNS = [
   'leads','negociacao','aguardando_cotacao','agendado',
@@ -37,7 +36,7 @@ function UnreadBadge({ unreadCounts }) {
 }
 
 export default function KanbanBoard() {
-  const { unreadCounts, setSelectedLead } = useApp()
+  const { unreadCounts, setSelectedLead, setSidebarOpen } = useApp()
   const [columnCounts, setColumnCounts] = useState({})
   const [searchResults, setSearchResults] = useState(null)
   const [colRefresh, setColRefresh] = useState({})
