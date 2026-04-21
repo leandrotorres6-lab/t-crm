@@ -145,6 +145,20 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => window.removeEventListener('tcrm:lead-moved', handler)
   }, [columnId])
 
+  // Conversa lida — zera badge no card sem mover
+  useEffect(() => {
+    const handler = ({ detail: { conversationId } }) => {
+      setLeads(prev => {
+        const idx = prev.findIndex(l => l.id === conversationId)
+        if (idx === -1) return prev
+        const updated = { ...prev[idx], unreadCount: 0 }
+        return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)]
+      })
+    }
+    window.addEventListener('tcrm:read', handler)
+    return () => window.removeEventListener('tcrm:read', handler)
+  }, [])
+
   useEffect(() => {
     const handler = ({ detail: { conversationId, content, lastMessageAt, isInbound } }) => {
       setLeads(prev => {

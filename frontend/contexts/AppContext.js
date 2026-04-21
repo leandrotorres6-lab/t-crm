@@ -55,6 +55,10 @@ export function AppProvider({ children }) {
 
   useSocket('unread_update', ({ conversationId, count }) => {
     setUnreadCounts(prev => ({ ...prev, [String(conversationId)]: count }))
+    // Se count = 0, também invalida cache da coluna para reordenar
+    if (count === 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: String(conversationId) } }))
+    }
   })
 
   useSocket('new_conversation', (lead) => {
@@ -165,7 +169,7 @@ export function AppProvider({ children }) {
     sidebarOpen, setSidebarOpen,
     scheduleModal, setScheduleModal,
     paymentModal, setPaymentModal,
-    unreadCounts,
+    unreadCounts, setUnreadCounts,
     pendingMoves, applyPendingMove, clearPendingMove,
   // Only primitive/state values in deps — functions are stable via useCallback
   // eslint-disable-next-line react-hooks/exhaustive-deps

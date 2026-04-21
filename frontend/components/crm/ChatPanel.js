@@ -1244,7 +1244,7 @@ function NotesPanel({ conversationId, notes, setNotes }) {
 }
 
 export default function ChatPanel() {
-  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove } = useApp()
+  const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove, unreadCounts, setUnreadCounts } = useApp()
   const [messages, setMessages] = useState([])
   const [currentColumn, setCurrentColumn] = useState(null)
   const [assigneeName, setAssigneeName] = useState('')
@@ -1326,6 +1326,9 @@ export default function ChatPanel() {
     setActiveTab('chat')
     setNotes([])
     setContactTyping(false)
+    // Marca como lida ao abrir — zera badge no backend E no estado local
+    api.markAsRead(selectedLead.id).catch(() => {})
+    setUnreadCounts(prev => ({ ...prev, [String(selectedLead.id)]: 0 }))
     // Carrega notas
     api.getNotes(selectedLead.id).then(d => setNotes(d.notes || [])).catch(() => {})
     // Carrega templates (uma vez)

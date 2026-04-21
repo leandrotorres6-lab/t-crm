@@ -168,11 +168,9 @@ function ConversasList() {
 
   // Zera badge quando usuário abre a conversa
   useSocket('unread_update', ({ conversationId, count }) => {
-    if (count === 0) {
-      setAllLeads(prev => prev.map(l =>
-        l.id === String(conversationId) ? { ...l, unreadCount: 0 } : l
-      ))
-    }
+    setAllLeads(prev => prev.map(l =>
+      l.id === String(conversationId) ? { ...l, unreadCount: count } : l
+    ))
   })
 
   // Nova conversa → adiciona no topo
