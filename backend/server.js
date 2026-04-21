@@ -251,16 +251,24 @@ async function getAllConversations() {
     map[String(conv.id)] = mapped
   })
   // Preserva unread counts do store local (mais atualizado que o Chatwoot)
+  // REGRA: store.unread é a fonte de verdade local — se estiver zerado, mantém zero
   Object.keys(map).forEach(id => {
     const localUnread = store.getUnread(id)
-    if (localUnread > 0) map[id].unreadCount = localUnread
+    // Se temos registro local do unread, usa ele (pode ser 0 = lido pelo agente)
+    const stateSnapshot = store._state ? store._state() : {}
+    if (id in (stateSnapshot.unread || {})) {
+      map[id].unreadCount = localUnread
+    }
+    // Se não temos registro local, usa o valor do Chatwoot (primeira carga)
   })
   store.setCache(map)
 
   // Sincroniza para Supabase em background
+  // NÃO sobrescreve unread_count no Supabase com valor do Chatwoot
+  // (apenas upsert sem incluir unread_count para não regredir)
   if (typeof db !== 'undefined' && db.DB_READY && db.DB_READY()) {
     const leads = Object.values(map)
-    db.upsertMany(leads).catch(e => console.warn('Supabase sync error:', e.message))
+    db.upsertManyNoUnread(leads).catch(e => console.warn('Supabase sync error:', e.message))
   }
   } finally {
     fetchingConversations = null

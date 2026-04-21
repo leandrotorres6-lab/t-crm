@@ -237,4 +237,21 @@ async function getAll({ assignedTo = null } = {}) {
   return (data || []).map(fromRow)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow }
+// Upsert sem sobrescrever unread_count (usado na sincronização periódica)
+async function upsertManyNoUnread(leads) {
+  if (!DB_READY || !leads.length) return
+  const rows = leads.map(lead => {
+    const r = toRow(lead)
+    delete r.unread_count  // não sobrescreve — Supabase mantém o valor atual
+    return r
+  })
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100)
+    const { error } = await supabase
+      .from('leads')
+      .upsert(chunk, { onConflict: 'id', ignoreDuplicates: false })
+    if (error) console.error('[DB] upsertManyNoUnread error:', error.message)
+  }
+}
+
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow }

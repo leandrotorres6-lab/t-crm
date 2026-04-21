@@ -13,11 +13,11 @@ import { usePush } from '../../lib/usePush'
 import { api } from '../../lib/api'
 
 const NAV = [
-  { href: '/crm', icon: KanbanSquare, label: 'CRM' },
-  { href: '/conversas', icon: MessageCircle, label: 'Conversas' },
+  { href: '/crm', icon: KanbanSquare, label: 'CRM', badgeKey: 'unread' },
+  { href: '/conversas', icon: MessageCircle, label: 'Conversas', badgeKey: 'unread' },
   { href: '/contatos', icon: Users, label: 'Contatos' },
-  { href: '/agendamento', icon: Calendar, label: 'Agendamento' },
-  { href: '/aguardando-pagamento', icon: DollarSign, label: 'Pagamentos' },
+  { href: '/agendamento', icon: Calendar, label: 'Agendamento', badgeKey: 'agendamento' },
+  { href: '/aguardando-pagamento', icon: DollarSign, label: 'Pagamentos', badgeKey: 'pagamento' },
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
 ]
 
@@ -30,6 +30,41 @@ export default function Sidebar() {
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
   const { theme, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [globalBadges, setGlobalBadges] = useState({ unread: 0, agendamento: 0, pagamento: 0 })
+
+  // Computa badges globais
+  useEffect(() => {
+    const unread = Object.values(unreadCounts || {}).reduce((s, v) => s + (v || 0), 0)
+    setGlobalBadges(prev => ({ ...prev, unread }))
+  }, [unreadCounts])
+
+  // Conta agendamentos e pagamentos do dia (a cada 5min)
+  useEffect(() => {
+    const computeBadges = async () => {
+      try {
+        const [sched, pay] = await Promise.all([
+          api.getScheduled(currentAgent?.id, currentAgent?.role),
+          api.getPayments(),
+        ])
+        const today = new Date().toDateString()
+        const now = new Date()
+        const agendamento = (sched || []).filter(l => {
+          if (!l.scheduledAt) return false
+          const d = new Date(l.scheduledAt)
+          return d.toDateString() === today || (d > now && d - now < 3600000)
+        }).length
+        const pagamento = (pay || []).filter(l => {
+          if (!l.paymentDueDate) return false
+          const d = new Date(l.paymentDueDate)
+          return d.toDateString() === today || d < now
+        }).length
+        setGlobalBadges(prev => ({ ...prev, agendamento, pagamento }))
+      } catch {}
+    }
+    computeBadges()
+    const iv = setInterval(computeBadges, 5 * 60 * 1000)
+    return () => clearInterval(iv)
+  }, [currentAgent?.id])
   const [avatarUrl, setAvatarUrl] = useState(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef(null)
@@ -122,7 +157,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {NAV.map(({ href, icon: Icon, label }) => {
+        {NAV.map(({ href, icon: Icon, label, badgeKey }) => {
           const active = pathname === href || (href === '/crm' && pathname.startsWith('/crm'))
           return (
             <Link
@@ -137,9 +172,22 @@ export default function Sidebar() {
               `}
               style={active ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#60a5fa' } : {}}
             >
-              <Icon size={18} className="flex-shrink-0" />
+              <div className="relative flex-shrink-0">
+                  <Icon size={18} />
+                  {badgeKey && !sidebarOpen && globalBadges[badgeKey] > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white flex items-center justify-center font-bold"
+                      style={{ fontSize: '9px', padding: '0 2px' }}>
+                      {globalBadges[badgeKey] > 99 ? '99+' : globalBadges[badgeKey]}
+                    </span>
+                  )}
+                </div>
               {sidebarOpen && (
-                <span className="text-sm font-medium animate-fade-in truncate">{label}</span>
+                <span className="text-sm font-medium animate-fade-in truncate flex-1">{label}</span>
+              )}
+              {sidebarOpen && badgeKey && globalBadges[badgeKey] > 0 && (
+                <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold px-1 ml-auto">
+                  {globalBadges[badgeKey] > 99 ? '99+' : globalBadges[badgeKey]}
+                </span>
               )}
               {active && sidebarOpen && (
                 <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />

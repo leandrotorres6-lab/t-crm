@@ -131,4 +131,7 @@ const store = {
 }
 
 load()
+// Expõe state interno para o server.js verificar quais IDs têm unread registrado
+store._state = () => state
+
 module.exports = store

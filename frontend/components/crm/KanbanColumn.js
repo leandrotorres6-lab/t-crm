@@ -85,7 +85,16 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           return
         }
         kanbanCache.set(columnId, 1, data)
-        setLeads(data.items)
+        // CRÍTICO: preserva unreadCount do estado local (pode estar mais recente que o banco)
+        // O estado local é zerado ao abrir conversa — não pode ser sobrescrito por fetch antigo
+        setLeads(prev => {
+          const localUnread = {}
+          prev.forEach(l => { if (l.unreadCount === 0) localUnread[l.id] = 0 })
+          return data.items.map(item => ({
+            ...item,
+            unreadCount: item.id in localUnread ? localUnread[item.id] : item.unreadCount
+          }))
+        })
         setHasMore(data.hasMore)
         setTotal(data.total)
         setPage(1)

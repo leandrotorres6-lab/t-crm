@@ -135,7 +135,15 @@ function ConversasList() {
       const data = await api.getInbox(currentAgent?.id, currentAgent?.role)
       const convs = data.conversations || []
       persistentCache.set(INBOX_CACHE_KEY, convs)
-      setAllLeads(convs)
+      // Preserva unreadCount=0 do estado local (abertas recentemente)
+      setAllLeads(prev => {
+        const localZero = {}
+        prev.forEach(l => { if (l.unreadCount === 0) localZero[l.id] = true })
+        return convs.map(c => ({
+          ...c,
+          unreadCount: localZero[c.id] ? 0 : c.unreadCount
+        }))
+      })
     } catch (e) {
       console.error('inbox load error:', e)
     } finally {
