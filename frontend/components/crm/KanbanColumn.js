@@ -59,7 +59,13 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
       if (pageNum === 1) {
         const cached = kanbanCache.get(columnId, 1)
         if (cached) {
-          setLeads(cached.items)
+          // Re-sort cache by lastMessageAt before showing (may have been updated by new messages)
+          const sorted = [...cached.items].sort((a, b) => {
+            const ua = a.unreadCount || 0, ub = b.unreadCount || 0
+            if (ua !== ub) return ub - ua
+            return new Date(b.lastMessageAt || b.createdAt || 0) - new Date(a.lastMessageAt || a.createdAt || 0)
+          })
+          setLeads(sorted)
           setHasMore(cached.hasMore)
           setTotal(cached.total)
           setPage(1)
@@ -143,23 +149,20 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     const handler = ({ detail: { conversationId, content, lastMessageAt, isInbound } }) => {
       setLeads(prev => {
         const idx = prev.findIndex(l => l.id === conversationId)
-        if (idx === -1) {
-          console.log(`[KanbanColumn:${columnId}] card ${conversationId} não encontrado`)
-          return prev
-        }
+        if (idx === -1) return prev
+
         const ts = lastMessageAt || new Date().toISOString()
         const updatedCard = {
           ...prev[idx],
           lastMessage: content || prev[idx].lastMessage,
           lastMessageAt: ts,
         }
-        // Se já está no topo, só atualiza
-        if (idx === 0) {
-          console.log(`[KanbanColumn:${columnId}] card ${conversationId} já no topo, atualizando`)
-          return [updatedCard, ...prev.slice(1)]
-        }
+
+        // Invalida cache para este card receber dados frescos no próximo load
+        kanbanCache.invalidate(columnId)
+
         // Move para o topo
-        console.log(`[KanbanColumn:${columnId}] card ${conversationId} movendo do idx ${idx} para o topo`)
+        if (idx === 0) return [updatedCard, ...prev.slice(1)]
         return [updatedCard, ...prev.filter((_, i) => i !== idx)]
       })
     }
