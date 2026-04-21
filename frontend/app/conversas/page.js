@@ -24,19 +24,19 @@ const COL_LABELS = {
   pago: 'Pago', sem_retorno: 'Sem Retorno',
 }
 
-function timeAgo(dateStr) {
+function formatTime(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
+  if (isNaN(d)) return ''
   const now = new Date()
-  const diff = now - d
-  const mins = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  if (mins < 1) return 'agora'
-  if (mins < 60) return `${mins}m`
-  if (hours < 24) return `${hours}h`
-  if (days < 7) return `${days}d`
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const today = now.toDateString()
+  const yesterday = new Date(now - 86400000).toDateString()
+  const hhmm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === today) return `Hoje ${hhmm}`
+  if (d.toDateString() === yesterday) return `Ontem ${hhmm}`
+  const dd = String(d.getDate()).padStart(2,'0')
+  const mm = String(d.getMonth()+1).padStart(2,'0')
+  return `${dd}/${mm} ${hhmm}`
 }
 
 function ConvItem({ lead, isSelected, onClick, unread }) {
@@ -75,7 +75,7 @@ function ConvItem({ lead, isSelected, onClick, unread }) {
             {lead.name}
           </p>
           <span className="text-xs text-[var(--text-muted)] flex-shrink-0" style={{ fontSize: '11px' }}>
-            {timeAgo(lead.createdAt)}
+            {formatTime(lead.lastMessageAt || lead.createdAt)}
           </span>
         </div>
 
@@ -145,19 +145,23 @@ function ConversasList() {
 
   useEffect(() => { load() }, [currentAgent?.id])
 
-  // Sobe lead para o topo e incrementa badge quando chega mensagem nova
-  useSocket('new_message', ({ conversationId, message }) => {
-    if (message?.sender !== 'lead') return
+  // Sobe lead para o topo quando chega mensagem nova
+  useSocket('new_message', ({ conversationId, message, content, lastMessageAt, isInbound }) => {
+    const id = String(conversationId)
+    const text = content || message?.content || ''
+    const ts = lastMessageAt || new Date().toISOString()
+
     setAllLeads(prev => {
-      const idx = prev.findIndex(l => l.id === String(conversationId))
+      const idx = prev.findIndex(l => l.id === id)
       if (idx === -1) return prev
       const card = {
         ...prev[idx],
-        lastMessage: message.content || prev[idx].lastMessage,
-        unreadCount: (prev[idx].unreadCount || 0) + 1,
+        lastMessage: text || prev[idx].lastMessage,
+        lastMessageAt: ts,
+        unreadCount: isInbound !== false ? (prev[idx].unreadCount || 0) + 1 : prev[idx].unreadCount || 0,
       }
       const updated = [card, ...prev.filter((_, i) => i !== idx)]
-      persistentCache.set(INBOX_CACHE_KEY, updated)  // persiste
+      persistentCache.set(INBOX_CACHE_KEY, updated)
       return updated
     })
   })

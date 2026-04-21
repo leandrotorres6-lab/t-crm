@@ -140,18 +140,32 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   }, [columnId])
 
   useEffect(() => {
-    const handler = ({ detail: { conversationId, content } }) => {
+    const handler = ({ detail: { conversationId, content, lastMessageAt, isInbound } }) => {
       setLeads(prev => {
         const idx = prev.findIndex(l => l.id === conversationId)
-        if (idx === -1) return prev
-        if (idx === 0) return prev.map((l, i) => i === 0 ? { ...l, lastMessage: content || l.lastMessage } : l)
-        const card = { ...prev[idx], lastMessage: content || prev[idx].lastMessage }
-        return [card, ...prev.filter((_, i) => i !== idx)]
+        if (idx === -1) {
+          console.log(`[KanbanColumn:${columnId}] card ${conversationId} não encontrado`)
+          return prev
+        }
+        const ts = lastMessageAt || new Date().toISOString()
+        const updatedCard = {
+          ...prev[idx],
+          lastMessage: content || prev[idx].lastMessage,
+          lastMessageAt: ts,
+        }
+        // Se já está no topo, só atualiza
+        if (idx === 0) {
+          console.log(`[KanbanColumn:${columnId}] card ${conversationId} já no topo, atualizando`)
+          return [updatedCard, ...prev.slice(1)]
+        }
+        // Move para o topo
+        console.log(`[KanbanColumn:${columnId}] card ${conversationId} movendo do idx ${idx} para o topo`)
+        return [updatedCard, ...prev.filter((_, i) => i !== idx)]
       })
     }
     window.addEventListener('tcrm:new-message', handler)
     return () => window.removeEventListener('tcrm:new-message', handler)
-  }, [])
+  }, [columnId])
 
   // Drag
   const handleDragOver = e => { e.preventDefault(); setDragOver(true) }

@@ -9,14 +9,19 @@ const COL_COLORS = {
   pago: '#22c55e', sem_retorno: '#6b7280',
 }
 
-function timeAgo(iso) {
+function formatTime(iso) {
   if (!iso) return ''
-  const diff = Date.now() - new Date(iso)
-  const h = Math.floor(diff / 3600000)
-  const d = Math.floor(diff / 86400000)
-  if (d > 1) return `${d}d`
-  if (h > 0) return `${h}h`
-  return 'agora'
+  const d = new Date(iso)
+  if (isNaN(d)) return ''
+  const now = new Date()
+  const today = now.toDateString()
+  const yesterday = new Date(now - 86400000).toDateString()
+  const hhmm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === today) return `Hoje ${hhmm}`
+  if (d.toDateString() === yesterday) return `Ontem ${hhmm}`
+  const dd = String(d.getDate()).padStart(2,'0')
+  const mm = String(d.getMonth()+1).padStart(2,'0')
+  return `${dd}/${mm} ${hhmm}`
 }
 
 const KanbanCard = memo(function KanbanCard({ lead, columnId }) {
@@ -115,9 +120,9 @@ const KanbanCard = memo(function KanbanCard({ lead, columnId }) {
             {lead.assigneeName.slice(0, 2).toUpperCase()}
           </div>
         )}
-        {lead.createdAt && (
+        {(lead.lastMessageAt || lead.createdAt) && (
           <span className="text-xs text-[var(--text-muted)] ml-auto" style={{ fontSize: '10px' }}>
-            {timeAgo(lead.createdAt)}
+            {formatTime(lead.lastMessageAt || lead.createdAt)}
           </span>
         )}
       </div>

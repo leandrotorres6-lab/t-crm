@@ -294,7 +294,7 @@ const _buildIdx = (map) => {
     idx[col].sort((a, b) => {
       const ua = a.unreadCount || 0, ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
-      return new Date(b.createdAt) - new Date(a.createdAt)
+      return new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
     })
   }
   return idx
@@ -651,7 +651,7 @@ app.get('/api/inbox', async (req, res) => {
       const ua = a.unreadCount || 0
       const ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
-      return new Date(b.createdAt) - new Date(a.createdAt)
+      return new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
     })
 
     res.json({ conversations: all, total: all.length })
@@ -779,7 +779,7 @@ app.get('/api/search', async (req, res) => {
     all.sort((a, b) => {
       const ua = a.unreadCount || 0, ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
-      return new Date(b.createdAt) - new Date(a.createdAt)
+      return new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
     })
 
     res.json({ results: all.slice(0, 50), total: all.length })
@@ -822,20 +822,39 @@ app.post('/api/chatwoot/webhook', (req, res) => {
   if (event === 'message_created') {
     const msg = cw.mapMessage(data)
     const conversationId = String(data.conversation?.id || data.conversation_id)
-    store.invalidateCache()
-    store.updateLastMessage(conversationId, data.content || (data.attachments?.length ? '[Arquivo]' : ''))
-    io.emit('new_message', { conversationId, message: msg })
-    if (data.message_type === 0) {
+    const now = new Date().toISOString()
+    const content = data.content || (data.attachments?.length ? '[Arquivo]' : '')
+    const isInbound = data.message_type === 0  // 0=inbound (cliente), 1=outbound (agente)
+
+    // Atualiza lastMessage + lastMessageAt no cache sem invalidar tudo
+    store.updateLastMessage(conversationId, content)
+    store.updateLastMessageAt(conversationId, content, now)
+    _colIdx = null  // força rebuild do índice na próxima query
+
+    console.log(`[Webhook] Nova msg conv=${conversationId} type=${isInbound?'inbound':'outbound'} content="${content.slice(0,50)}"`)
+
+    // Emite para todos os clientes conectados
+    io.emit('new_message', {
+      conversationId,
+      message: msg,
+      lastMessageAt: now,
+      content,
+      isInbound,
+    })
+
+    if (isInbound) {
       const count = store.incrementUnread(conversationId)
       io.emit('unread_update', { conversationId, count })
-      // Push notification para todos os agentes inscritos
+
+      // Push notification
       const contactName = data.conversation?.meta?.sender?.name || 'Cliente'
-      const msgText = data.content || (data.attachments?.length ? '📎 Arquivo' : 'Nova mensagem')
+      const msgText = content || 'Nova mensagem'
+      console.log(`[Push] Disparando para ${pushSubscriptions.size} agentes: ${contactName} - ${msgText.slice(0,40)}`)
       sendPushToAll(
         `💬 ${contactName}`,
-        msgText.slice(0, 100),
-        { conversationId, url: '/conversas' }
-      ).catch(() => {})
+        msgText.slice(0, 120),
+        { conversationId, url: `/conversas` }
+      ).catch(e => console.warn('[Push] Erro:', e.message))
     }
   }
 

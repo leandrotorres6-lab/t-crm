@@ -56,23 +56,46 @@ export function AppProvider({ children }) {
     setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: 1 }))
   })
 
-  // Nova mensagem recebida → sobe card, incrementa badge
-  useSocket('new_message', ({ conversationId, message }) => {
+  // Nova mensagem recebida → sobe card, incrementa badge, atualiza horário
+  useSocket('new_message', ({ conversationId, message, lastMessageAt, content, isInbound }) => {
     const id = String(conversationId)
-    // Só mensagens do cliente
-    if (message?.sender !== 'lead') return
-    // Incrementa contador de não lidas localmente (backup se unread_update demorar)
-    setUnreadCounts(prev => ({
-      ...prev,
-      [id]: (prev[id] || 0) + 1
-    }))
-    // Sobe card no kanban e nas conversas
+    const ts = lastMessageAt || new Date().toISOString()
+    const text = content || message?.content || ''
+
+    console.log(`[Socket] new_message conv=${id} inbound=${isInbound} content="${text.slice(0,40)}"`)
+
+    // Incrementa não lidas apenas para inbound
+    if (isInbound !== false) {
+      setUnreadCounts(prev => ({
+        ...prev,
+        [id]: (prev[id] || 0) + 1
+      }))
+    }
+
+    // Dispara evento global para todas as colunas e listas
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:new-message', {
-        detail: { conversationId: id, content: message?.content || '' }
+        detail: { conversationId: id, content: text, lastMessageAt: ts, isInbound }
       }))
     }
   })
+
+  // Escuta mensagens do service worker (deep link de notificação)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
+    const handler = (event) => {
+      if (event.data?.type === 'open-conversation') {
+        const { conversationId } = event.data
+        if (conversationId) {
+          console.log('[SW] Abrindo conversa via push:', conversationId)
+          // Redireciona para /conversas e seleciona o lead
+          window.location.href = '/conversas'
+        }
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', handler)
+    return () => navigator.serviceWorker.removeEventListener('message', handler)
+  }, [])
 
   useSocket('lead_moved', ({ id, column, fromColumn }) => {
     clearPendingMove(String(id))

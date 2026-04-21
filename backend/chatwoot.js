@@ -242,7 +242,12 @@ function mapConversation(conv, columnOverride) {
     assignedTo: assignee.id ? String(assignee.id) : null,
     assigneeName: assignee.name || '',
     assigneeAvatar: assignee.name ? assignee.name.slice(0, 2).toUpperCase() : null,
-    lastMessage: lastMsg?.content || '',
+    lastMessage: lastMsg?.content || (lastMsg?.attachments?.length ? '[Arquivo]' : ''),
+    lastMessageAt: lastMsg?.created_at
+      ? new Date(lastMsg.created_at * 1000).toISOString()
+      : conv.last_activity_at
+        ? new Date(conv.last_activity_at * 1000).toISOString()
+        : conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     createdAt: conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     product: detectProduct(lastMsg?.content || ''),
     unreadCount: conv.unread_count || 0,
