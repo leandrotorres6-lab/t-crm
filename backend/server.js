@@ -607,8 +607,10 @@ app.get('/api/agents', async (req, res) => {
     }
 
     const agents = await cw.getAgents()
+    if (!agents || !agents.length) {
+      return res.status(503).json({ error: 'Chatwoot não retornou agentes' })
+    }
     const mapped = agents.map(a => {
-      const firstName = (a.name || '').split(' ')[0].toLowerCase()
       const isSupervisor = SUPERVISORS.some(s => (a.name || '').toLowerCase().includes(s))
       return {
         id: String(a.id),
@@ -619,11 +621,18 @@ app.get('/api/agents', async (req, res) => {
         role: isSupervisor ? 'supervisor' : 'vendedor',
       }
     })
-
     res.json(mapped)
   } catch (e) {
-    console.error('[Agents]', e.message)
-    res.status(500).json({ error: e.message })
+    console.error('[Agents] Erro ao buscar do Chatwoot:', e.message)
+    // Retorna lista de fallback para não quebrar o login
+    res.json([
+      { id: 'u1', name: 'Leandro Torres',   email: 'leandro@pvcorretora.com.br',    avatar: 'LT', role: 'supervisor' },
+      { id: 'u2', name: 'Daniel Baptista',  email: 'daniel@pvcorretora.com.br',     avatar: 'DB', role: 'supervisor' },
+      { id: 'u3', name: 'Safira Admin',     email: 'safira@pvcorretora.com.br',     avatar: 'SA', role: 'supervisor' },
+      { id: 'u4', name: 'Wellington Silva', email: 'wellington@pvcorretora.com.br', avatar: 'WS', role: 'vendedor'   },
+      { id: 'u5', name: 'Nilson Costa',     email: 'nilson@pvcorretora.com.br',     avatar: 'NC', role: 'vendedor'   },
+      { id: 'u6', name: 'CRM CLOW',         email: 'admin@clow.pvcorretora.com.br', avatar: 'CC', role: 'supervisor' },
+    ])
   }
 })
 

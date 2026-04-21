@@ -26,7 +26,7 @@ const STATUS_LABELS = { online: 'Online', ocupado: 'Ocupado', offline: 'Offline'
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { sidebarOpen, setSidebarOpen, currentAgent, logout } = useApp()
+  const { sidebarOpen, setSidebarOpen, currentAgent, logout, unreadCounts } = useApp()
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
   const { theme, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
