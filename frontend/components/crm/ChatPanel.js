@@ -1116,6 +1116,8 @@ export default function ChatPanel() {
   const [savingNote, setSavingNote] = useState(false)
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
+  const [slashMenu, setSlashMenu] = useState({ open: false, query: '', filtered: [] })
+  const textareaRef = useRef(null)
   const [contactTyping, setContactTyping] = useState(false)
   const typingTimeoutRef = useRef(null)
   const typingDebounceRef = useRef(null)
@@ -1561,15 +1563,99 @@ export default function ChatPanel() {
               )}
             </div>
 
+            {/* Slash menu — aparece acima do input ao digitar / */}
+            {slashMenu.open && (
+              <div className="mb-2 rounded-xl overflow-hidden shadow-2xl border border-[var(--border)]"
+                style={{ backgroundColor: 'var(--bg-card)' }}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.06)' }}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-md"
+                      style={{ backgroundColor: '#2563eb', color: 'white', fontSize: '10px' }}>
+                      /
+                    </span>
+                    <span className="text-xs font-semibold text-blue-400">Mensagens rápidas</span>
+                    {slashMenu.query && (
+                      <span className="text-xs text-[var(--text-muted)]">· buscando "{slashMenu.query}"</span>
+                    )}
+                  </div>
+                  <button onClick={() => setSlashMenu(s => ({ ...s, open: false }))}
+                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {slashMenu.filtered.length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)] px-3 py-3 text-center">
+                    Nenhum template encontrado para "/{slashMenu.query}"
+                  </p>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto">
+                    {slashMenu.filtered.map((t, idx) => {
+                      const name = selectedLead?.name?.split(' ')[0] || 'cliente'
+                      const preview = t.content
+                        .replace(/\{\{nome\}\}/gi, name)
+                        .replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'))
+                      return (
+                        <button key={t.id}
+                          onClick={() => {
+                            // Substitui o "/" e query pelo texto do template
+                            const lines = input.split('\n')
+                            lines[lines.length - 1] = preview
+                            setInput(lines.join('\n'))
+                            setSlashMenu({ open: false, query: '', filtered: [] })
+                            setTimeout(() => textareaRef.current?.focus(), 50)
+                          }}
+                          className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors text-left border-b border-[var(--border)] last:border-0">
+                          {/* Ícone de ordem */}
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                            style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
+                            <span className="text-blue-400 font-bold" style={{ fontSize: '10px' }}>{idx + 1}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-[var(--text-primary)]">{t.title}</p>
+                            <p className="text-xs text-[var(--text-muted)] truncate mt-0.5 leading-relaxed">
+                              {preview.slice(0, 80)}{preview.length > 80 ? '...' : ''}
+                            </p>
+                          </div>
+                          <span className="text-xs text-[var(--text-muted)] flex-shrink-0 mt-0.5">Enter</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="px-3 py-1.5 border-t border-[var(--border)]"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    ↑↓ navegar · Enter selecionar · Esc fechar · <span className="text-blue-400">⚙</span> gerencie em Configurações
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Textarea + mic + send */}
             <div className="flex items-end gap-2 rounded-xl p-2"
-              style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              style={{ backgroundColor: 'var(--bg-card)', border: `1px solid ${slashMenu.open ? 'rgba(59,130,246,0.5)' : 'var(--border)'}` }}>
               <button className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors flex-shrink-0">
                 <Smile size={16} />
               </button>
-              <textarea value={input} onChange={e => {
-                setInput(e.target.value)
-                // Envia indicador de digitando (debounced)
+              <textarea ref={textareaRef} value={input} onChange={e => {
+                const val = e.target.value
+                setInput(val)
+                // Detecta "/" no início da linha para abrir menu rápido
+                const lastLine = val.split('\n').pop() || ''
+                if (lastLine.startsWith('/')) {
+                  const query = lastLine.slice(1).toLowerCase()
+                  const filtered = templates.filter(t =>
+                    !query || t.title.toLowerCase().includes(query) || t.content.toLowerCase().includes(query)
+                  )
+                  setSlashMenu({ open: true, query, filtered })
+                } else {
+                  setSlashMenu(s => s.open ? { ...s, open: false } : s)
+                }
+                // Typing indicator
                 if (selectedLead) {
                   clearTimeout(typingDebounceRef.current)
                   api.sendTyping(selectedLead.id, true).catch(() => {})
@@ -1577,8 +1663,15 @@ export default function ChatPanel() {
                     api.sendTyping(selectedLead.id, false).catch(() => {})
                   }, 3000)
                 }
-              }} onKeyDown={handleKeyDown}
-                placeholder="Digite uma mensagem..."
+              }} onKeyDown={e => {
+                // Navega slash menu com teclado
+                if (slashMenu.open) {
+                  if (e.key === 'Escape') { e.preventDefault(); setSlashMenu(s => ({ ...s, open: false })) }
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault() }
+                }
+                handleKeyDown(e)
+              }}
+                placeholder="Digite / para mensagens rápidas..."
                 rows={1}
                 className="flex-1 bg-transparent resize-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] leading-relaxed"
                 style={{ maxHeight: '100px', minHeight: '24px' }} />
