@@ -159,12 +159,13 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => window.removeEventListener('tcrm:lead-moved', handler)
   }, [columnId])
 
-  // Conversa lida — zera badge no card sem mover
+  // Conversa lida — zera local unreadCount no card (o global já foi zerado no AppContext)
   useEffect(() => {
     const handler = ({ detail: { conversationId } }) => {
       setLeads(prev => {
         const idx = prev.findIndex(l => l.id === conversationId)
         if (idx === -1) return prev
+        if (prev[idx].unreadCount === 0) return prev  // já está zerado, evita re-render
         const updated = { ...prev[idx], unreadCount: 0 }
         return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)]
       })
@@ -180,13 +181,16 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
         if (idx === -1) return prev
 
         const ts = lastMessageAt || new Date().toISOString()
+        const card = prev[idx]
         const updatedCard = {
-          ...prev[idx],
-          lastMessage: content || prev[idx].lastMessage,
+          ...card,
+          lastMessage: content || card.lastMessage,
           lastMessageAt: ts,
+          // NÃO incrementa unreadCount aqui — AppContext.unreadCounts é a fonte de verdade
+          // KanbanCard lê de unreadCounts[lead.id] que já foi incrementado no AppContext
         }
 
-        // Invalida cache para este card receber dados frescos no próximo load
+        // Invalida cache
         kanbanCache.invalidate(columnId)
 
         // Move para o topo

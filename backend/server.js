@@ -741,7 +741,7 @@ app.post('/api/messages/:leadId/attachment', upload.single('file'), async (req, 
 app.post('/api/conversations/:id/read', async (req, res) => {
   const { id } = req.params
   store.resetUnread(id)
-  io.emit('unread_update', { conversationId: id, count: 0 })
+  io.emit('unread_update', { conversationId: id, count: 0, updatedAt: updatedAt })
   res.json({ ok: true })
 })
 
@@ -1133,15 +1133,17 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
       }
     }
 
-    console.log(`[Webhook] Nova msg conv=${conversationId} type=${isInbound?'inbound':'outbound'} content="${content.slice(0,50)}"`)
+    console.log(`[WH] msg conv=${conversationId} type=${isInbound?'IN':'OUT'} unreadAt=${unreadUpdatedAt.slice(0,19)} preview="${content.slice(0,30)}"`)
 
     // Emite para todos os clientes conectados
+    const senderName = data.conversation?.meta?.sender?.name || data.sender?.name || ''
     io.emit('new_message', {
       conversationId,
-      message: msg,
+      message: { ...msg, senderName },
       lastMessageAt: now,
       content,
       isInbound,
+      senderName,
     })
 
     if (isInbound) {

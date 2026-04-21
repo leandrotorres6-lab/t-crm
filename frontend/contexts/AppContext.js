@@ -16,6 +16,8 @@ export function AppProvider({ children }) {
   const [scheduleModal, setScheduleModal] = useState(null)
   const [paymentModal, setPaymentModal] = useState(null)
   const [unreadCounts, setUnreadCounts] = useState({})
+  // Deduplicação: guarda IDs de mensagens já processadas (últimos 200)
+  const processedMessages = React.useRef(new Set())
   // Mapa de updatedAt por conversa — árbitro de conflitos de unread
   // leadId → ISO timestamp do último update de unread aceito
   const unreadUpdatedAt = React.useRef({})
@@ -65,17 +67,22 @@ export function AppProvider({ children }) {
     const incoming = updatedAt || new Date().toISOString()
     const current = unreadUpdatedAt.current[id] || '2000-01-01'
 
-    // Regra: só aceita update se timestamp incoming >= current
-    if (incoming < current) {
-      console.log(`[Unread] Ignorando evento desatualizado conv=${id} incoming=${incoming} current=${current}`)
-      return
-    }
-
-    unreadUpdatedAt.current[id] = incoming
-    setUnreadCounts(prev => ({ ...prev, [id]: count }))
-
-    if (count === 0 && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
+    if (count === 0) {
+      // Zerar só aceita se o timestamp for >= ao último update registrado
+      if (incoming < current) return
+      unreadUpdatedAt.current[id] = incoming
+      setUnreadCounts(prev => ({ ...prev, [id]: 0 }))
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
+      }
+    } else {
+      // Incremento — aceita sempre (new_message já atualizou localmente, aqui sincroniza com Supabase)
+      unreadUpdatedAt.current[id] = incoming
+      setUnreadCounts(prev => {
+        // Usa o maior valor entre local e Supabase
+        const localCount = prev[id] || 0
+        return { ...prev, [id]: Math.max(localCount, count) }
+      })
     }
   })
 
@@ -84,15 +91,24 @@ export function AppProvider({ children }) {
   })
 
   // Nova mensagem recebida → sobe card, incrementa badge, atualiza horário
-  useSocket('new_message', ({ conversationId, message, lastMessageAt, content, isInbound }) => {
+  useSocket('new_message', ({ conversationId, message, lastMessageAt, content, isInbound, senderName: sn }) => {
+    // Deduplicação por message_id — evita duplo processamento em reconexão
+    const msgId = message?.id || `${conversationId}-${lastMessageAt}`
+    if (processedMessages.current.has(msgId)) return
+    processedMessages.current.add(msgId)
+    // Mantém só os últimos 200 para evitar memory leak
+    if (processedMessages.current.size > 200) {
+      const first = processedMessages.current.values().next().value
+      processedMessages.current.delete(first)
+    }
     const id = String(conversationId)
     const ts = lastMessageAt || new Date().toISOString()
     const text = content || message?.content || ''
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {
-      // Não incrementa localmente — aguarda o unread_update do socket com timestamp correto
-      // (evita duplo incremento: socket new_message + unread_update)
+      // Incrementa localmente de imediato (UX instantâneo)
+      setUnreadCounts(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
 
       // Som (Web Audio API — sem arquivo externo)
       try {
@@ -110,7 +126,7 @@ export function AppProvider({ children }) {
       } catch {}
 
       // Toast visual in-app
-      const senderName = message?.senderName || 'Cliente'
+      const senderName = sn || message?.senderName || 'Cliente'
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tcrm:toast', {
           detail: { text: `💬 ${senderName}: ${text.slice(0, 60)}${text.length > 60 ? '...' : ''}`, conversationId: id }
