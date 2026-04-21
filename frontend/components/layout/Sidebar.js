@@ -32,6 +32,12 @@ export default function Sidebar({ mobileOverlay = false }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [globalBadges, setGlobalBadges] = useState({ unread: 0, agendamento: 0, pagamento: 0 })
 
+  const BADGE_COLORS = {
+    unread:     { bg: '#ef4444', shadow: 'rgba(239,68,68,0.4)' },      // vermelho — mensagens
+    agendamento:{ bg: '#f59e0b', shadow: 'rgba(245,158,11,0.4)' },    // âmbar — agenda
+    pagamento:  { bg: '#f97316', shadow: 'rgba(249,115,22,0.4)' },    // laranja — pagamentos
+  }
+
   // Computa badges globais
   useEffect(() => {
     const unread = Object.values(unreadCounts || {}).reduce((s, v) => s + (v || 0), 0)
@@ -42,24 +48,33 @@ export default function Sidebar({ mobileOverlay = false }) {
   useEffect(() => {
     const computeBadges = async () => {
       try {
-        const [sched, pay] = await Promise.all([
+        const [schedResp, payResp] = await Promise.all([
           api.getScheduled(currentAgent?.id, currentAgent?.role),
           api.getPayments(),
         ])
         const today = new Date().toDateString()
         const now = new Date()
-        const agendamento = (sched || []).filter(l => {
+
+        // getScheduled retorna array direto ou { agendamentos: [] }
+        const sched = Array.isArray(schedResp) ? schedResp : (schedResp?.agendamentos || schedResp?.leads || [])
+        const agendamento = sched.filter(l => {
           if (!l.scheduledAt) return false
           const d = new Date(l.scheduledAt)
-          return d.toDateString() === today || (d > now && d - now < 3600000)
+          return d.toDateString() === today
         }).length
-        const pagamento = (pay || []).filter(l => {
+
+        // getPayments retorna array direto ou { pagamentos: [] }
+        const pay = Array.isArray(payResp) ? payResp : (payResp?.pagamentos || payResp?.leads || [])
+        const pagamento = pay.filter(l => {
           if (!l.paymentDueDate) return false
           const d = new Date(l.paymentDueDate)
           return d.toDateString() === today || d < now
         }).length
+
         setGlobalBadges(prev => ({ ...prev, agendamento, pagamento }))
-      } catch {}
+      } catch (e) {
+        console.warn('[Badges]', e.message)
+      }
     }
     computeBadges()
     const iv = setInterval(computeBadges, 5 * 60 * 1000)
@@ -201,25 +216,44 @@ export default function Sidebar({ mobileOverlay = false }) {
               `}
               style={active ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#60a5fa' } : {}}
             >
+              {/* Ícone com badge no canto (sidebar fechada) */}
               <div className="relative flex-shrink-0">
-                  <Icon size={18} />
-                  {badgeKey && !sidebarOpen && globalBadges[badgeKey] > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white flex items-center justify-center font-bold"
-                      style={{ fontSize: '9px', padding: '0 2px' }}>
-                      {globalBadges[badgeKey] > 99 ? '99+' : globalBadges[badgeKey]}
-                    </span>
-                  )}
-                </div>
+                <Icon size={18} />
+                {badgeKey && !sidebarOpen && globalBadges[badgeKey] > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] rounded-full text-white flex items-center justify-center font-bold animate-pulse"
+                    style={{
+                      fontSize: '9px',
+                      padding: '0 3px',
+                      backgroundColor: BADGE_COLORS[badgeKey]?.bg || '#ef4444',
+                      boxShadow: `0 0 6px ${BADGE_COLORS[badgeKey]?.shadow || 'rgba(239,68,68,0.4)'}`,
+                    }}>
+                    {globalBadges[badgeKey] > 99 ? '99+' : globalBadges[badgeKey]}
+                  </span>
+                )}
+              </div>
+
+              {/* Label (sidebar aberta) */}
               {sidebarOpen && (
                 <span className="text-sm font-medium animate-fade-in truncate flex-1">{label}</span>
               )}
+
+              {/* Badge inline (sidebar aberta) */}
               {sidebarOpen && badgeKey && globalBadges[badgeKey] > 0 && (
-                <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold px-1 ml-auto">
+                <span
+                  className="ml-auto flex-shrink-0 min-w-[20px] h-5 rounded-full text-white text-xs flex items-center justify-center font-bold px-1.5"
+                  style={{
+                    backgroundColor: BADGE_COLORS[badgeKey]?.bg || '#ef4444',
+                    boxShadow: `0 0 8px ${BADGE_COLORS[badgeKey]?.shadow || 'rgba(239,68,68,0.4)'}`,
+                    fontSize: '11px',
+                  }}>
                   {globalBadges[badgeKey] > 99 ? '99+' : globalBadges[badgeKey]}
                 </span>
               )}
-              {active && sidebarOpen && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />
+
+              {/* Ponto ativo (sem conflito com badge) */}
+              {active && sidebarOpen && !badgeKey && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
               )}
             </Link>
           )
