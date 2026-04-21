@@ -7,8 +7,8 @@ let supabase = null
 let DB_READY = false
 
 function init() {
-  const SUPABASE_URL = process.env.SUPABASE_URL || ''
-  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || ''
+  const SUPABASE_URL = process.env.SB_URL || process.env.SUPABASE_URL || ''
+  const SUPABASE_KEY = process.env.SB_KEY || process.env.SUPABASE_SERVICE_KEY || ''
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.log('⚠️  Supabase não configurado — usando store.json como fallback')
