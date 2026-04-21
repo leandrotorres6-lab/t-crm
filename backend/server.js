@@ -25,6 +25,7 @@ const multer = require('multer')
 const cw = require('./chatwoot')
 const store = require('./store')
 const db = require('./db')
+const polling = require('./polling')
 
 const app = express()
 const server = http.createServer(app)
@@ -1270,10 +1271,19 @@ server.listen(PORT, async () => {
   getAllConversations()
     .then(async all => {
       console.log(`✅ Cache pronto: ${all.length} conversas`)
-      // Sincroniza para o Supabase em background (não bloqueia)
+      // Sincroniza para o Supabase em background
       if (db.DB_READY()) {
         db.upsertMany(all).then(() => console.log('✅ Supabase sincronizado'))
       }
+      // Inicia polling do Chatwoot (substitui webhook quando VPS não alcança Railway)
+      polling.start({
+        cw,
+        io,
+        store,
+        db,
+        targetInboxId,
+        mapMessage: cw.mapMessage,
+      })
     })
     .catch(e => console.warn('⚠️  Pré-carga falhou:', e.message))
 

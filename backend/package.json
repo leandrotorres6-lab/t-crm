@@ -18,7 +18,8 @@
     "multer": "^2.1.1",
     "multer-storage-s3": "^1.1.1",
     "socket.io": "^4.8.3",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

@@ -338,7 +338,7 @@ function detectProduct(text) {
 
 module.exports = {
   resolveColumnFromLabels: resolveColumn,
-  getConversations, getConversation, markConversationRead,
+  getConversations, getConversation, markConversationRead, mapMessage,
   getMessages, sendMessage, sendAttachment,
   getAgents, assignAgent, getInboxes,
   getAccountLabels, getConversationLabels, setConversationLabels, setKanbanLabel,
