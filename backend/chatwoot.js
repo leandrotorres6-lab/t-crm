@@ -42,7 +42,7 @@ async function cwForm(path, formData) {
 // ─── Conversas ───────────────────────────────────────────────────────────────
 
 async function getConversations({ page = 1, status = 'open', inboxId } = {}) {
-  let url = `/conversations?page=${page}&status=${status}`
+  let url = `/conversations?page=${page}&status=${status}&sort=last_activity_at`
   if (inboxId) url += `&inbox_id=${inboxId}`
   const data = await cw(url)
   return data?.data?.payload || []
@@ -243,10 +243,12 @@ function mapConversation(conv, columnOverride) {
     assigneeName: assignee.name || '',
     assigneeAvatar: assignee.name ? assignee.name.slice(0, 2).toUpperCase() : null,
     lastMessage: lastMsg?.content || (lastMsg?.attachments?.length ? '[Arquivo]' : ''),
-    lastMessageAt: lastMsg?.created_at
-      ? new Date(lastMsg.created_at * 1000).toISOString()
-      : conv.last_activity_at
-        ? new Date(conv.last_activity_at * 1000).toISOString()
+    // Usa last_activity_at do Chatwoot como fonte primária (mais confiável)
+    // É atualizado a cada msg enviada/recebida
+    lastMessageAt: conv.last_activity_at
+      ? new Date(conv.last_activity_at * 1000).toISOString()
+      : lastMsg?.created_at
+        ? new Date(lastMsg.created_at * 1000).toISOString()
         : conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     createdAt: conv.created_at ? new Date(conv.created_at * 1000).toISOString() : new Date().toISOString(),
     product: detectProduct(lastMsg?.content || ''),

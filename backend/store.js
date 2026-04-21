@@ -96,11 +96,10 @@ const store = {
     const id = String(conversationId)
     const ts = timestamp || new Date().toISOString()
     if (state.cache[id]) {
-      state.cache[id].lastMessage = content
+      if (content) state.cache[id].lastMessage = content
       state.cache[id].lastMessageAt = ts
     }
-    // Invalida índice de colunas
-    state.cacheAt = Date.now() // mantém válido mas força rebuild do índice
+    // _colIdx será null → próxima query reconstrói índice já ordenado
   },
 
   // Atualiza última mensagem no cache

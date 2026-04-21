@@ -1,5 +1,6 @@
 'use client'
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { setAuthToken, clearAuthToken } from '../lib/api'
 import { useSocket } from '../lib/socket'
 
 const AppContext = createContext({})

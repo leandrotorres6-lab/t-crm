@@ -8,8 +8,9 @@ import {
   LayoutDashboard, KanbanSquare, Calendar, Users, MessageCircle, Menu, X,
   Sun, Moon, Circle, Wifi, WifiOff, ChevronDown, DollarSign
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { usePush } from '../../lib/usePush'
+import { api } from '../../lib/api'
 
 const NAV = [
   { href: '/crm', icon: KanbanSquare, label: 'CRM' },
@@ -29,7 +30,31 @@ export default function Sidebar() {
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
   const { theme, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef(null)
   const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
+
+  // Carrega avatar do agente
+  useEffect(() => {
+    if (!currentAgent?.id) return
+    // Tenta avatar customizado primeiro
+    api.getAgentAvatar(currentAgent.id)
+      .then(d => { if (d.url) setAvatarUrl(d.url) })
+      .catch(() => {})
+  }, [currentAgent?.id])
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !currentAgent?.id) return
+    setUploadingAvatar(true)
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
+      const data = await api.uploadAvatar(currentAgent.id, file)
+      if (data.url) setAvatarUrl(backendUrl + data.url)
+    } catch (err) { console.error('Avatar upload:', err) }
+    finally { setUploadingAvatar(false) }
+  }
 
   const width = sidebarOpen ? 'w-60' : 'w-16'
 
@@ -144,20 +169,34 @@ export default function Sidebar() {
             onClick={() => sidebarOpen && setUserMenuOpen(o => !o)}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-all"
           >
-            <div className="relative flex-shrink-0">
-              {currentUser.avatarUrl ? (
-                <img src={currentUser.avatarUrl} alt={currentUser.name}
+            {/* Avatar — clicável para trocar foto */}
+            <div className="relative flex-shrink-0 group cursor-pointer"
+              onClick={() => sidebarOpen && fileInputRef.current?.click()}
+              title={sidebarOpen ? 'Clique para trocar sua foto' : currentUser.name}>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+              {(avatarUrl || currentUser.avatarUrl) ? (
+                <img src={avatarUrl || currentUser.avatarUrl} alt={currentUser.name}
                   className="w-8 h-8 rounded-xl object-cover"
-                  onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
-              ) : null}
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 items-center justify-center"
-                style={{ display: currentUser.avatarUrl ? 'none' : 'flex' }}>
-                <span className="text-white text-xs font-bold">{currentUser.avatar}</span>
-              </div>
-              <div
-                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-900"
-                style={{ backgroundColor: STATUS_COLORS[currentUser.status || 'online'] }}
-              />
+                  onError={() => setAvatarUrl(null)} />
+              ) : (
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">{currentUser.avatar}</span>
+                </div>
+              )}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 rounded-xl bg-black/50 flex items-center justify-center">
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                </div>
+              )}
+              {sidebarOpen && !uploadingAvatar && (
+                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                  <svg className="opacity-0 group-hover:opacity-100 transition-opacity" width="12" height="12" viewBox="0 0 24 24" fill="white">
+                    <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
+                  </svg>
+                </div>
+              )}
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-900"
+                style={{ backgroundColor: STATUS_COLORS[currentUser.status || 'online'] }} />
             </div>
             {sidebarOpen && (
               <div className="flex-1 text-left animate-fade-in overflow-hidden">

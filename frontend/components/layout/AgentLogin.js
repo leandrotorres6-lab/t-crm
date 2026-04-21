@@ -66,8 +66,8 @@ export default function AgentLogin({ onLogin }) {
     setLogging(true)
     setError('')
     try {
-      const { agent } = await api.login(selected.id, password)
-      onLogin(agent)
+      const { agent, token } = await api.login(selected.id, password)
+      onLogin(agent, token)
     } catch (err) {
       const msg = err?.message || 'Senha incorreta'
       // Tenta extrair mensagem do JSON de erro

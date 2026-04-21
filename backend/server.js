@@ -5,11 +5,18 @@ const { Server } = require('socket.io')
 const cors = require('cors')
 const compression = require('compression')
 const webpush = require('web-push')
+const jwt = require('jsonwebtoken')
+const helmet = require('helmet')
+const rateLimit = require('express-rate-limit')
 
 // VAPID para push notifications
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BC5dEmG-Wrbr87AkZqLdhePfTBBxQQmlxThtG2CH-iz5Xvd1ZQJcLhZvczWb5nPUD8EHxHnOOM8Uu7h86gg33ZA'
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'KQOpbbydw1HsA7SGsZsX5RTOSr-JBZ1z_aFfKRtuiJs'
 webpush.setVapidDetails('mailto:admin@pvcorretora.com.br', VAPID_PUBLIC, VAPID_PRIVATE)
+
+// JWT secret — usa var de ambiente em prod
+const JWT_SECRET = process.env.JWT_SECRET || 'tcrm-dev-secret-change-in-production'
+const JWT_EXPIRES = '7d'
 
 // Subscriptions em memória (migrar para Supabase futuramente)
 const pushSubscriptions = new Map()
@@ -46,8 +53,31 @@ io.on('connection', s => {
   })
 })
 
-app.use(cors())
-app.use(compression())  // gzip todas as respostas — reduz payload 60-80%
+// ── Segurança ─────────────────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false,  // Next.js gerencia o CSP
+  crossOriginEmbedderPolicy: false,
+}))
+app.use(cors({
+  origin: [FRONTEND_URL, 'http://localhost:3000', 'https://t-crm.vercel.app'],
+  credentials: true,
+}))
+app.use(compression())
+
+// Rate limiting — protege contra força bruta
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutos
+  max: 10,                     // máximo 10 tentativas
+  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+})
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,  // 1 minuto
+  max: 300,              // 300 requests/min por IP
+  message: { error: 'Rate limit atingido.' },
+  skip: (req) => req.path === '/api/chatwoot/webhook',  // webhook não limita
+})
+app.use('/api/', apiLimiter)
 
 // Compressão gzip para respostas grandes
 app.use((req, res, next) => {
@@ -303,6 +333,13 @@ const _buildIdx = (map) => {
 const _origInvalidate = store.invalidateCache.bind(store)
 store.invalidateCache = () => { _colIdx = null; _origInvalidate() }
 
+// Também invalida índice quando lastMessageAt é atualizado
+const _origUpdateAt = store.updateLastMessageAt.bind(store)
+store.updateLastMessageAt = (id, content, ts) => {
+  _colIdx = null  // força reordenação na próxima query
+  _origUpdateAt(id, content, ts)
+}
+
 app.get('/api/kanban/:column', async (req, res) => {
   try {
     const { column } = req.params
@@ -404,7 +441,7 @@ app.get('/api/pagamentos', async (req, res) => {
 })
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { agentId, password } = req.body
   if (!agentId || !password) return res.status(400).json({ error: 'Informe agente e senha' })
 
@@ -451,7 +488,39 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Senha incorreta' })
   }
 
-  res.json({ ok: true, agent })
+  const token = jwt.sign(
+    { id: agent.id, name: agent.name, role: agent.role, email: agent.email },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES }
+  )
+  res.json({ ok: true, agent, token })
+})
+
+// ─── AUTH MIDDLEWARE ─────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  // Webhook do Chatwoot não precisa de auth
+  if (req.path.includes('/chatwoot/webhook')) return next()
+  // Push subscribe também não (chamado antes do login em alguns casos)
+  if (req.path.includes('/push/vapid-key')) return next()
+
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token não fornecido' })
+  }
+  try {
+    const decoded = jwt.verify(auth.slice(7), JWT_SECRET)
+    req.user = decoded
+    next()
+  } catch (err) {
+    return res.status(401).json({ error: 'Token inválido ou expirado' })
+  }
+}
+
+// Aplica auth em todas as rotas /api/* exceto login, status e webhook
+app.use('/api', (req, res, next) => {
+  const publicPaths = ['/status', '/auth/login', '/debug', '/chatwoot/webhook', '/push/vapid-key']
+  if (publicPaths.some(p => req.path === p || req.path.startsWith(p))) return next()
+  return requireAuth(req, res, next)
 })
 
 // ─── AGENTES ─────────────────────────────────────────────────────────────────
@@ -646,12 +715,13 @@ app.get('/api/inbox', async (req, res) => {
       all = all.filter(c => c.assignedTo === agentId)
     }
 
-    // Ordena: não lidas primeiro, depois por data mais recente
+    // Ordena: não lidas → lastMessageAt mais recente
     all.sort((a, b) => {
-      const ua = a.unreadCount || 0
-      const ub = b.unreadCount || 0
+      const ua = a.unreadCount || 0, ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
-      return new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
+      const ta = a.lastMessageAt || a.createdAt || '2000'
+      const tb = b.lastMessageAt || b.createdAt || '2000'
+      return new Date(tb) - new Date(ta)
     })
 
     res.json({ conversations: all, total: all.length })
@@ -786,6 +856,46 @@ app.get('/api/search', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── AVATAR UPLOAD ───────────────────────────────────────────────────────────
+const path = require('path')
+const fs = require('fs')
+
+// Pasta de avatares
+const AVATARS_DIR = path.join(__dirname, 'public', 'avatars')
+if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true })
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: AVATARS_DIR,
+    filename: (req, file, cb) => {
+      const agentId = req.params.agentId || req.user?.id || 'unknown'
+      const ext = path.extname(file.originalname).toLowerCase() || '.jpg'
+      cb(null, `agent_${agentId}${ext}`)
+    }
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },  // 2MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    cb(null, allowed.includes(file.mimetype))
+  }
+})
+
+// Serve avatars estaticamente
+app.use('/avatars', express.static(AVATARS_DIR))
+
+app.post('/api/agents/:agentId/avatar', avatarUpload.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Arquivo inválido' })
+  const url = `/avatars/${req.file.filename}`
+  // Salva no store para persistir entre sessions
+  store.setMeta(`avatar_${req.params.agentId}`, { avatarUrl: url })
+  res.json({ ok: true, url })
+})
+
+app.get('/api/agents/:agentId/avatar', (req, res) => {
+  const meta = store.getMeta(`avatar_${req.params.agentId}`)
+  res.json({ url: meta?.avatarUrl || null })
+})
+
 // ─── PUSH NOTIFICATIONS ─────────────────────────────────────────────────────
 app.get('/api/push/vapid-key', (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC })
@@ -814,10 +924,97 @@ async function sendPushToAll(title, body, data = {}) {
   }
 }
 
+// ─── NOTAS INTERNAS ──────────────────────────────────────────────────────────
+// Notas ficam no store como metadados da conversa
+app.get('/api/conversations/:id/notes', (req, res) => {
+  const meta = store.getMeta(req.params.id)
+  res.json({ notes: meta.notes || [] })
+})
+
+app.post('/api/conversations/:id/notes', (req, res) => {
+  const { content } = req.body
+  if (!content?.trim()) return res.status(400).json({ error: 'Conteúdo obrigatório' })
+  const meta = store.getMeta(req.params.id)
+  const notes = meta.notes || []
+  const note = {
+    id: Date.now().toString(),
+    content: content.trim(),
+    author: req.user?.name || 'Agente',
+    createdAt: new Date().toISOString(),
+  }
+  notes.unshift(note)
+  store.setMeta(req.params.id, { notes })
+  io.emit('note_added', { conversationId: req.params.id, note })
+  res.json({ ok: true, note })
+})
+
+app.delete('/api/conversations/:id/notes/:noteId', (req, res) => {
+  const meta = store.getMeta(req.params.id)
+  const notes = (meta.notes || []).filter(n => n.id !== req.params.noteId)
+  store.setMeta(req.params.id, { notes })
+  res.json({ ok: true })
+})
+
+// ─── TEMPLATES DE MENSAGEM ────────────────────────────────────────────────────
+// Templates ficam no store global (id='_templates')
+app.get('/api/templates', (req, res) => {
+  const meta = store.getMeta('_templates')
+  res.json({ templates: meta.list || getDefaultTemplates() })
+})
+
+app.post('/api/templates', (req, res) => {
+  const { title, content } = req.body
+  if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: 'Título e conteúdo obrigatórios' })
+  const meta = store.getMeta('_templates')
+  const list = meta.list || getDefaultTemplates()
+  const tpl = { id: Date.now().toString(), title: title.trim(), content: content.trim() }
+  list.push(tpl)
+  store.setMeta('_templates', { list })
+  res.json({ ok: true, template: tpl })
+})
+
+app.delete('/api/templates/:id', (req, res) => {
+  const meta = store.getMeta('_templates')
+  const list = (meta.list || []).filter(t => t.id !== req.params.id)
+  store.setMeta('_templates', { list })
+  res.json({ ok: true })
+})
+
+function getDefaultTemplates() {
+  return [
+    { id: 't1', title: 'Saudação', content: 'Olá, {{nome}}! 😊 Tudo bem? Aqui é da PV Corretora. Como posso te ajudar hoje?' },
+    { id: 't2', title: 'Aguardando retorno', content: 'Oi {{nome}}, tudo bem? Estou aguardando seu retorno para darmos continuidade ao seu seguro. Quando você tiver um momento?' },
+    { id: 't3', title: 'Envio de cotação', content: 'Segue em anexo a cotação conforme conversamos. Qualquer dúvida estou à disposição! 👍' },
+    { id: 't4', title: 'Confirmação de pagamento', content: 'Ótimo {{nome}}! Pagamento confirmado ✅ Vou já providenciar a apólice. Em breve envio mais informações!' },
+    { id: 't5', title: 'Agendamento', content: 'Perfeito! Agendado para {{data}}. Qualquer coisa me chame. Até lá! 📅' },
+  ]
+}
+
+// ─── TYPING INDICATOR ─────────────────────────────────────────────────────────
+app.post('/api/conversations/:id/typing', (req, res) => {
+  const { isTyping } = req.body
+  io.emit('agent_typing', {
+    conversationId: req.params.id,
+    agentName: req.user?.name || 'Agente',
+    isTyping: !!isTyping,
+  })
+  res.json({ ok: true })
+})
+
 // ─── WEBHOOK CHATWOOT ────────────────────────────────────────────────────────
 app.post('/api/chatwoot/webhook', (req, res) => {
   const { event, data } = req.body
   if (!data) return res.json({ ok: true })
+
+  // Chatwoot dispara conversation_typing_on/off quando cliente digita
+  if (event === 'conversation_typing_on' || event === 'conversation_typing_off') {
+    const conversationId = String(data.id || data.conversation_id)
+    io.emit('contact_typing', {
+      conversationId,
+      isTyping: event === 'conversation_typing_on',
+    })
+    return res.json({ ok: true })
+  }
 
   if (event === 'message_created') {
     const msg = cw.mapMessage(data)

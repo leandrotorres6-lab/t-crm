@@ -7,7 +7,7 @@ import {
   Send, Loader2, MessageCircle, Smile, Wifi, WifiOff, Tag, ChevronDown,
   Check, ArrowRight, Mic, MicOff, Paperclip, ImageIcon, X,
   Play, Pause, Download, FileText, ChevronUp, MoreVertical,
-  UserCheck, Plus, Trash2, Volume2
+  UserCheck, Plus, Trash2, Volume2, StickyNote, Layout, Pencil
 } from 'lucide-react'
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -1015,6 +1015,89 @@ function AudioPreview({ blob, onSend, onCancel, sending }) {
 }
 
 // ─── Componente principal: ChatPanel ─────────────────────────────────────────
+// ─── NotesPanel ──────────────────────────────────────────────────────────────
+function NotesPanel({ conversationId, notes, setNotes }) {
+  const [noteInput, setNoteInput] = useState('')
+  const [saving, setSaving] = useState(false)
+  const { currentAgent } = useApp()
+
+  const addNote = async () => {
+    if (!noteInput.trim() || saving) return
+    setSaving(true)
+    try {
+      const data = await api.addNote(conversationId, noteInput.trim())
+      setNotes(prev => [data.note, ...prev])
+      setNoteInput('')
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  const deleteNote = async (noteId) => {
+    await api.deleteNote(conversationId, noteId).catch(() => {})
+    setNotes(prev => prev.filter(n => n.id !== noteId))
+  }
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Input de nova nota */}
+      <div className="px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
+        <p className="text-xs text-[var(--text-muted)] mb-2">
+          📝 Notas internas — <span style={{ color: '#f59e0b' }}>não aparecem para o cliente</span>
+        </p>
+        <div className="flex gap-2">
+          <textarea
+            value={noteInput}
+            onChange={e => setNoteInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addNote() }}
+            placeholder="Adicionar nota interna... (Ctrl+Enter para salvar)"
+            rows={3}
+            className="flex-1 text-sm p-2.5 rounded-xl resize-none outline-none"
+            style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--text-primary)' }}
+          />
+          <button onClick={addNote} disabled={saving || !noteInput.trim()}
+            className="px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 flex-shrink-0"
+            style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Lista de notas */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {notes.length === 0 ? (
+          <div className="flex flex-col items-center py-10 gap-2">
+            <StickyNote size={28} className="text-[var(--text-muted)]" style={{ opacity: 0.3 }} />
+            <p className="text-sm text-[var(--text-muted)]">Nenhuma nota ainda</p>
+          </div>
+        ) : notes.map(note => (
+          <div key={note.id} className="group rounded-xl p-3"
+            style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm text-[var(--text-primary)] leading-relaxed flex-1 whitespace-pre-wrap">{note.content}</p>
+              <button onClick={() => deleteNote(note.id)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-400 hover:text-red-300 flex-shrink-0">
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-4 h-4 rounded-full bg-yellow-500/30 flex items-center justify-center">
+                <span style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 700 }}>
+                  {(note.author || 'A').slice(0, 1)}
+                </span>
+              </div>
+              <span className="text-xs text-[var(--text-muted)]">{note.author}</span>
+              <span className="text-xs text-[var(--text-muted)]">·</span>
+              <span className="text-xs text-[var(--text-muted)]">
+                {note.createdAt ? new Date(note.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ChatPanel() {
   const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove } = useApp()
   const [messages, setMessages] = useState([])
@@ -1027,6 +1110,15 @@ export default function ChatPanel() {
   const [sending, setSending] = useState(false)
   const [isLive, setIsLive] = useState(false)
   const [moveToast, setMoveToast] = useState(null)
+  const [activeTab, setActiveTab] = useState('chat')  // 'chat' | 'notas'
+  const [notes, setNotes] = useState([])
+  const [noteInput, setNoteInput] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+  const [templates, setTemplates] = useState([])
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [contactTyping, setContactTyping] = useState(false)
+  const typingTimeoutRef = useRef(null)
+  const typingDebounceRef = useRef(null)
   // Áudio
   const [recordingMode, setRecordingMode] = useState(false) // gravando
   const [audioBlob, setAudioBlob] = useState(null)          // preview de áudio
@@ -1052,6 +1144,23 @@ export default function ChatPanel() {
   }, [])
 
   // ── Mensagem nova em tempo real ────────────────────────────────────────────
+  // Indicador de digitando — cliente digitando no WhatsApp
+  useSocket('contact_typing', ({ conversationId, isTyping }) => {
+    if (!selectedLead || String(conversationId) !== String(selectedLead.id)) return
+    setContactTyping(isTyping)
+    clearTimeout(typingTimeoutRef.current)
+    if (isTyping) {
+      // Auto-remove após 5s se não vier outro evento
+      typingTimeoutRef.current = setTimeout(() => setContactTyping(false), 5000)
+    }
+  })
+
+  // Nova nota adicionada por outro agente
+  useSocket('note_added', ({ conversationId, note }) => {
+    if (!selectedLead || String(conversationId) !== String(selectedLead.id)) return
+    setNotes(prev => [note, ...prev.filter(n => n.id !== note.id)])
+  })
+
   useSocket('new_message', ({ conversationId, message }) => {
     if (!selectedLead || String(conversationId) !== String(selectedLead.id)) return
     setMessages(prev => prev.find(m => m.id === message.id) ? prev : [...prev, message])
@@ -1066,6 +1175,13 @@ export default function ChatPanel() {
     setMessages([])
     setHasMore(false)
     setLoadingInit(true)
+    setActiveTab('chat')
+    setNotes([])
+    setContactTyping(false)
+    // Carrega notas
+    api.getNotes(selectedLead.id).then(d => setNotes(d.notes || [])).catch(() => {})
+    // Carrega templates (uma vez)
+    if (templates.length === 0) api.getTemplates().then(d => setTemplates(d.templates || [])).catch(() => {})
     api.getMessages(selectedLead.id)
       .then(data => { setMessages(data.messages); setHasMore(data.hasMore) })
       .catch(console.error)
@@ -1247,6 +1363,23 @@ export default function ChatPanel() {
         </div>
       )}
 
+      {/* ── Tabs: Chat / Notas ── */}
+      <div className="flex items-center px-4 border-b border-[var(--border)] flex-shrink-0 gap-0">
+        {[
+          { id: 'chat', label: 'Chat', Icon: MessageCircle },
+          { id: 'notas', label: `Notas${notes.length > 0 ? ` (${notes.length})` : ''}`, Icon: StickyNote },
+        ].map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all"
+            style={activeTab === id
+              ? { borderColor: '#3b82f6', color: '#60a5fa' }
+              : { borderColor: 'transparent', color: 'var(--text-muted)' }}>
+            <Icon size={13} />
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
@@ -1293,6 +1426,17 @@ export default function ChatPanel() {
         onMove={handleMove}
       />
 
+      {/* ── Aba: Notas ── */}
+      {activeTab === 'notas' && (
+        <NotesPanel
+          conversationId={selectedLead.id}
+          notes={notes}
+          setNotes={setNotes}
+        />
+      )}
+
+      {activeTab !== 'notas' && (
+        <>
       {/* ── Mensagens ── */}
       <div ref={scrollRef}
         onScroll={() => { if (scrollRef.current?.scrollTop < 60) loadOlder() }}
@@ -1321,6 +1465,19 @@ export default function ChatPanel() {
         }
         <div ref={messagesEndRef} />
       </div>
+
+      {/* ── Indicador: cliente digitando ── */}
+      {contactTyping && (
+        <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-[var(--text-muted)] animate-fade-in">
+          <div className="flex gap-1">
+            {[0,1,2].map(i => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
+                style={{ animationDelay: `${i * 150}ms` }} />
+            ))}
+          </div>
+          <span>{selectedLead?.name?.split(' ')[0]} está digitando...</span>
+        </div>
+      )}
 
       {/* ── Área de input ── */}
       <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0">
@@ -1359,7 +1516,7 @@ export default function ChatPanel() {
         {!recordingMode && !audioBlob && !pendingFile && (
           <>
             {/* Toolbar */}
-            <div className="flex items-center gap-1 mb-2">
+            <div className="flex items-center gap-1 mb-2 relative">
               <button onClick={() => imageInputRef.current?.click()}
                 title="Enviar imagem"
                 className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-blue-400 transition-colors">
@@ -1370,8 +1527,38 @@ export default function ChatPanel() {
                 className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-blue-400 transition-colors">
                 <Paperclip size={16} />
               </button>
+              <button onClick={() => setShowTemplates(o => !o)}
+                title="Templates de mensagem"
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
+                style={{ color: showTemplates ? '#60a5fa' : 'var(--text-muted)' }}>
+                <Layout size={16} />
+              </button>
               <input ref={imageInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
               <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" className="hidden" onChange={handleFileChange} />
+              {/* Templates dropdown */}
+              {showTemplates && templates.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-2xl z-50 overflow-hidden"
+                  style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                  <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between">
+                    <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Templates</p>
+                    <button onClick={() => setShowTemplates(false)}><X size={12} className="text-[var(--text-muted)]" /></button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {templates.map(t => (
+                      <button key={t.id} onClick={() => {
+                        const name = selectedLead?.name?.split(' ')[0] || 'cliente'
+                        const text = t.content.replace(/\{\{nome\}\}/gi, name).replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'))
+                        setInput(text)
+                        setShowTemplates(false)
+                      }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors border-b border-[var(--border)] last:border-0">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">{t.title}</p>
+                        <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">{t.content.slice(0, 60)}...</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Textarea + mic + send */}
@@ -1380,7 +1567,17 @@ export default function ChatPanel() {
               <button className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors flex-shrink-0">
                 <Smile size={16} />
               </button>
-              <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+              <textarea value={input} onChange={e => {
+                setInput(e.target.value)
+                // Envia indicador de digitando (debounced)
+                if (selectedLead) {
+                  clearTimeout(typingDebounceRef.current)
+                  api.sendTyping(selectedLead.id, true).catch(() => {})
+                  typingDebounceRef.current = setTimeout(() => {
+                    api.sendTyping(selectedLead.id, false).catch(() => {})
+                  }, 3000)
+                }
+              }} onKeyDown={handleKeyDown}
                 placeholder="Digite uma mensagem..."
                 rows={1}
                 className="flex-1 bg-transparent resize-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] leading-relaxed"
@@ -1406,6 +1603,8 @@ export default function ChatPanel() {
           </>
         )}
       </div>
+        </>
+      )}
     </div>
   )
 }
