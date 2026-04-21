@@ -116,7 +116,7 @@ async function getByColumn(kanbanColumn, { limit = 15, offset = 0, assignedTo = 
 
   let query = supabase
     .from('leads')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('kanban_column', kanbanColumn)
     .eq('status', 'open')
     .order('unread_count', { ascending: false })
@@ -125,16 +125,16 @@ async function getByColumn(kanbanColumn, { limit = 15, offset = 0, assignedTo = 
 
   if (assignedTo) query = query.eq('assigned_to', assignedTo)
 
-  const { data, error, count } = await supabase
-    .from('leads')
-    .select('*', { count: 'exact', head: false })
-    .eq('kanban_column', kanbanColumn)
-    .eq('status', 'open')
-    .order('unread_count', { ascending: false })
-    .order('last_message_at', { ascending: false, nullsLast: true })
-    .range(offset, offset + limit - 1)
+  const { data, error, count } = await query
 
-  if (error) { console.error('[DB] getByColumn error:', error.message); return null }
+  if (error) {
+    // "Requested range not satisfiable" = offset além do total — retorna vazio, não erro
+    if (error.message.includes('range not satisfiable') || error.code === 'PGRST103') {
+      return { items: [], total: 0 }
+    }
+    console.error('[DB] getByColumn error:', error.message)
+    return null
+  }
   return { items: (data || []).map(fromRow), total: count || 0 }
 }
 
