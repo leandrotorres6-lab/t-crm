@@ -173,13 +173,33 @@ async function getAllConversations() {
 
   const all = []
   try {
-  for (let page = 1; page <= 20; page++) {
-    const batch = await cw.getConversations({ page, status: 'open', inboxId: targetInboxId || undefined })
-    if (!batch.length) break
+  // Fase 1: busca as 3 primeiras páginas em paralelo (resposta imediata)
+  const firstBatch = await Promise.all([1,2,3].map(p =>
+    cw.getConversations({ page: p, status: 'open', inboxId: targetInboxId || undefined })
+  ))
+  let lastPageSize = 25
+  for (const batch of firstBatch) {
     all.push(...batch)
-    if (batch.length < 25) break  // última página
+    lastPageSize = batch.length
   }
-  console.log(`📋 Total buscado do Chatwoot: ${all.length} conversas`)
+
+  // Fase 2: se há mais páginas, busca 4 em paralelo por vez
+  if (lastPageSize >= 25) {
+    for (let startPage = 4; startPage <= 20; startPage += 4) {
+      const pages = [startPage, startPage+1, startPage+2, startPage+3]
+      const batches = await Promise.all(pages.map(p =>
+        cw.getConversations({ page: p, status: 'open', inboxId: targetInboxId || undefined })
+          .catch(() => [])
+      ))
+      let hasMore = false
+      for (const batch of batches) {
+        if (batch.length > 0) { all.push(...batch); hasMore = true }
+        if (batch.length < 25) { hasMore = false; break }
+      }
+      if (!hasMore) break
+    }
+  }
+  console.log(`📋 Total buscado do Chatwoot: ${all.length} conversas (paralelo)`)
   // NÃO carrega resolvidas automaticamente — só aparecem em histórico de contato
   // Resolvidas no kanban poluem com conversas internas, notificações, etc.
 

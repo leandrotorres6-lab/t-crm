@@ -78,7 +78,7 @@ const store = {
 
   // Cache de conversas (evita hammering na API do Chatwoot)
   getCache() {
-    if (Date.now() - state.cacheAt > 60000) return null // 60s TTL
+    if (Date.now() - state.cacheAt > 180000) return null // 3min TTL
     return state.cache
   },
 

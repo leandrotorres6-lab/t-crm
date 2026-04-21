@@ -1,7 +1,7 @@
 // Cache de dados do kanban — persiste entre sessões via localStorage
 import { persistentCache } from './persistentCache'
 
-const TTL = 120 * 1000 // 2 minutos
+const TTL = 180 * 1000 // 3 minutos — alinhado com backend
 
 export const kanbanCache = {
   key(columnId, page) { return `kanban_${columnId}_${page}` },
