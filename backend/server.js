@@ -55,29 +55,22 @@ io.on('connection', s => {
 
 // ── Segurança ─────────────────────────────────────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: false,  // Next.js gerencia o CSP
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }))
-app.use(cors({
-  origin: [FRONTEND_URL, 'http://localhost:3000', 'https://t-crm.vercel.app'],
-  credentials: true,
-}))
+
+// CORS permissivo — aceita qualquer origem (Vercel gera URLs diferentes a cada deploy)
+app.use(cors())
 app.use(compression())
 
-// Rate limiting — protege contra força bruta
+// Rate limiting apenas no login (evita força bruta)
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 minutos
-  max: 10,                     // máximo 10 tentativas
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
+  legacyHeaders: false,
 })
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,  // 1 minuto
-  max: 300,              // 300 requests/min por IP
-  message: { error: 'Rate limit atingido.' },
-  skip: (req) => req.path === '/api/chatwoot/webhook',  // webhook não limita
-})
-app.use('/api/', apiLimiter)
 
 // Compressão gzip para respostas grandes
 app.use((req, res, next) => {
@@ -441,7 +434,7 @@ app.get('/api/pagamentos', async (req, res) => {
 })
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', loginLimiter, async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { agentId, password } = req.body
   if (!agentId || !password) return res.status(400).json({ error: 'Informe agente e senha' })
 
@@ -519,6 +512,9 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Token inválido ou expirado' })
   }
 }
+
+// Rate limit no login
+app.use('/api/auth/login', loginLimiter)
 
 // Aplica auth em todas as rotas /api/* exceto login, status e webhook
 app.use('/api', (req, res, next) => {
