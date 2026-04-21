@@ -35,6 +35,14 @@ export default function Sidebar() {
   const fileInputRef = useRef(null)
   const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
 
+  // Pede permissão de notificação browser ao abrir
+  useEffect(() => {
+    if (!currentAgent) return
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => Notification.requestPermission(), 2000)
+    }
+  }, [currentAgent?.id])
+
   // Carrega avatar do agente
   useEffect(() => {
     if (!currentAgent?.id) return

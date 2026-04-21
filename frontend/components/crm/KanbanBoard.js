@@ -42,6 +42,19 @@ export default function KanbanBoard() {
   const [searchResults, setSearchResults] = useState(null)
   const [colRefresh, setColRefresh] = useState({})
   const [notifications, setNotifications] = useState([])
+  const [toasts, setToasts] = useState([])
+
+  // Escuta toasts de nova mensagem
+  useEffect(() => {
+    const handler = (e) => {
+      const { text, conversationId } = e.detail
+      const id = Date.now()
+      setToasts(prev => [...prev.slice(-2), { id, text, conversationId }])
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000)
+    }
+    window.addEventListener('tcrm:toast', handler)
+    return () => window.removeEventListener('tcrm:toast', handler)
+  }, [])
   // Mobile: índice da coluna visível atualmente
   const [mobileCol, setMobileCol] = useState(0)
   const scrollRef = useRef(null)
@@ -216,7 +229,20 @@ export default function KanbanBoard() {
         </button>
       </div>
 
-      {/* Toasts */}
+      {/* Toast de nova mensagem */}
+      <div className="fixed bottom-6 right-4 z-50 flex flex-col gap-2 pointer-events-none" style={{ maxWidth: '320px' }}>
+        {toasts.map(t => (
+          <div key={t.id}
+            onClick={() => { setToasts(prev => prev.filter(x => x.id !== t.id)) }}
+            className="pointer-events-auto flex items-start gap-2.5 px-4 py-3 rounded-2xl shadow-2xl cursor-pointer animate-slide-up"
+            style={{ backgroundColor: '#0f1a2e', border: '1px solid rgba(59,130,246,0.3)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
+            <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0 mt-1.5 animate-pulse" />
+            <p className="text-xs text-slate-200 leading-relaxed">{t.text}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Toasts 
       <div className="fixed top-16 right-3 z-50 flex flex-col gap-2 pointer-events-none md:top-4 md:right-[39%]">
         {notifications.map(n => (
           <div key={n.id} className="flex items-center gap-2 px-3 py-2 rounded-xl shadow-lg text-sm animate-slide-up"

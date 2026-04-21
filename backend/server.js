@@ -250,13 +250,38 @@ async function getAllConversations() {
     if (meta.observacao) mapped.observacao = meta.observacao
     map[String(conv.id)] = mapped
   })
+  // Preserva unread counts do store local (mais atualizado que o Chatwoot)
+  Object.keys(map).forEach(id => {
+    const localUnread = store.getUnread(id)
+    if (localUnread > 0) map[id].unreadCount = localUnread
+  })
   store.setCache(map)
+
+  // Sincroniza para Supabase em background
+  if (typeof db !== 'undefined' && db.DB_READY && db.DB_READY()) {
+    const leads = Object.values(map)
+    db.upsertMany(leads).catch(e => console.warn('Supabase sync error:', e.message))
+  }
   } finally {
     fetchingConversations = null
     if (resolveFetch) resolveFetch()
   }
   return Object.values(store.getCache())
 }
+
+// ─── SYNC SUPABASE ───────────────────────────────────────────────────────────
+app.post('/api/admin/sync-supabase', async (req, res) => {
+  if (!db.DB_READY()) return res.status(503).json({ error: 'Supabase não conectado' })
+  try {
+    console.log('[Sync] Iniciando sincronização forçada...')
+    const all = await getAllConversations()
+    await db.upsertMany(all)
+    res.json({ ok: true, synced: all.length })
+    console.log(`[Sync] ✅ ${all.length} leads sincronizados`)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 // ─── STATUS ──────────────────────────────────────────────────────────────────
 app.get('/api/status', (req, res) => res.json({
