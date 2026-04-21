@@ -24,7 +24,7 @@ function formatTime(iso) {
   return `${dd}/${mm} ${hhmm}`
 }
 
-const KanbanCard = memo(function KanbanCard({ lead, columnId }) {
+function KanbanCard({ lead, columnId }) {
   const { setSelectedLead, pendingMoves, unreadCounts } = useApp()
   const touchStartY = useRef(0)
   const touchStartX = useRef(0)
@@ -128,6 +128,6 @@ const KanbanCard = memo(function KanbanCard({ lead, columnId }) {
       </div>
     </div>
   )
-})
+}
 
 export default KanbanCard
