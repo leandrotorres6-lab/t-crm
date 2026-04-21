@@ -1811,7 +1811,32 @@ export default function ChatPanel() {
               <button className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors flex-shrink-0">
                 <Smile size={16} />
               </button>
-              <textarea ref={textareaRef} value={input} onChange={e => {
+              <textarea ref={textareaRef}
+                onPaste={e => {
+                  // Detecta imagem/arquivo colado (Ctrl+V)
+                  const items = e.clipboardData?.items
+                  if (!items) return
+                  for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                      e.preventDefault()
+                      const file = item.getAsFile()
+                      if (file && selectedLead) {
+                        const url = URL.createObjectURL(file)
+                        setPendingFile({ file, url, fileType: 'image' })
+                      }
+                      return
+                    }
+                    if (item.kind === 'file') {
+                      e.preventDefault()
+                      const file = item.getAsFile()
+                      if (file && selectedLead) {
+                        setPendingFile({ file, url: null, fileType: 'file' })
+                      }
+                      return
+                    }
+                  }
+                }}
+                value={input} onChange={e => {
                 const val = e.target.value
                 setInput(val)
                 // Detecta "/" no início da linha para abrir menu rápido

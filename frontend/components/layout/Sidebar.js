@@ -46,9 +46,19 @@ export default function Sidebar() {
   // Carrega avatar do agente
   useEffect(() => {
     if (!currentAgent?.id) return
-    // Tenta avatar customizado primeiro
+    // Tenta localStorage primeiro (instantâneo)
+    const cached = localStorage.getItem(`tcrm_avatar_${currentAgent.id}`)
+    if (cached) setAvatarUrl(cached)
+    // Confirma com backend
     api.getAgentAvatar(currentAgent.id)
-      .then(d => { if (d.url) setAvatarUrl(d.url) })
+      .then(d => {
+        if (d.url) {
+          const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001').replace(/\/api$/, '')
+          const full = d.url.startsWith('http') ? d.url : backendUrl + d.url
+          setAvatarUrl(full)
+          localStorage.setItem(`tcrm_avatar_${currentAgent.id}`, full)
+        }
+      })
       .catch(() => {})
   }, [currentAgent?.id])
 
@@ -57,9 +67,13 @@ export default function Sidebar() {
     if (!file || !currentAgent?.id) return
     setUploadingAvatar(true)
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
       const data = await api.uploadAvatar(currentAgent.id, file)
-      if (data.url) setAvatarUrl(backendUrl + data.url)
+      if (data.url) {
+        const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001').replace(/\/api$/, '')
+        setAvatarUrl(backendUrl + data.url)
+        // Salva no localStorage para persistir
+        localStorage.setItem(`tcrm_avatar_${currentAgent.id}`, backendUrl + data.url)
+      }
     } catch (err) { console.error('Avatar upload:', err) }
     finally { setUploadingAvatar(false) }
   }

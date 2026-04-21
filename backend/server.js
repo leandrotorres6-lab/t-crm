@@ -921,35 +921,57 @@ app.get('/api/search', async (req, res) => {
 const path = require('path')
 const fs = require('fs')
 
-// Pasta de avatares
-const AVATARS_DIR = path.join(__dirname, 'public', 'avatars')
-if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true })
-
+// Multer memory storage — envia para Supabase Storage (não salva no disco)
 const avatarUpload = multer({
-  storage: multer.diskStorage({
-    destination: AVATARS_DIR,
-    filename: (req, file, cb) => {
-      const agentId = req.params.agentId || req.user?.id || 'unknown'
-      const ext = path.extname(file.originalname).toLowerCase() || '.jpg'
-      cb(null, `agent_${agentId}${ext}`)
-    }
-  }),
-  limits: { fileSize: 2 * 1024 * 1024 },  // 2MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp']
     cb(null, allowed.includes(file.mimetype))
   }
 })
 
-// Serve avatars estaticamente
-app.use('/avatars', express.static(AVATARS_DIR))
-
-app.post('/api/agents/:agentId/avatar', avatarUpload.single('avatar'), (req, res) => {
+app.post('/api/agents/:agentId/avatar', avatarUpload.single('avatar'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Arquivo inválido' })
-  const url = `/avatars/${req.file.filename}`
-  // Salva no store para persistir entre sessions
-  store.setMeta(`avatar_${req.params.agentId}`, { avatarUrl: url })
-  res.json({ ok: true, url })
+  const agentId = req.params.agentId
+
+  try {
+    // Tenta Supabase Storage primeiro
+    if (db.DB_READY && db.DB_READY()) {
+      const { createClient } = require('@supabase/supabase-js')
+      const supa = createClient(process.env.SB_URL, process.env.SB_KEY, { auth: { persistSession: false } })
+
+      const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg'
+      const filename = `agent_${agentId}${ext}`
+
+      // Cria bucket se não existir
+      await supa.storage.createBucket('avatars', { public: true }).catch(() => {})
+
+      // Faz upload
+      const { error } = await supa.storage
+        .from('avatars')
+        .upload(filename, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true,
+        })
+
+      if (!error) {
+        const { data } = supa.storage.from('avatars').getPublicUrl(filename)
+        const url = data.publicUrl
+        store.setMeta(`avatar_${agentId}`, { avatarUrl: url })
+        return res.json({ ok: true, url })
+      }
+    }
+
+    // Fallback: base64 no store (sem Supabase Storage)
+    const b64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`
+    store.setMeta(`avatar_${agentId}`, { avatarUrl: b64 })
+    res.json({ ok: true, url: b64 })
+
+  } catch (e) {
+    console.error('[Avatar] Erro:', e.message)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 app.get('/api/agents/:agentId/avatar', (req, res) => {

@@ -22,7 +22,7 @@ export default function MainLayout({ children, chat, inbox }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+>
 
       {/* Sidebar — igual mobile e desktop */}
       <Sidebar />
