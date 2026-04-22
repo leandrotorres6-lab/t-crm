@@ -59,13 +59,13 @@ function processMessage(convId, msg, conv) {
   deps.store.updateLastMessage(convId, content)
   if (deps.store.updateLastMessageAt) deps.store.updateLastMessageAt(convId, content, now)
 
-  // Atualiza Supabase
+  // Atualiza Supabase (só para inbound — outbound do bot não incrementa unread)
   if (deps.db.DB_READY?.()) {
     deps.db.updateLastMessage(convId, content, now).catch(() => {})
     if (isInbound) deps.db.incrementUnread(convId).catch(() => {})
   }
 
-  // Socket.IO — new_message
+  // Emite new_message para TODAS as mensagens (inbound e outbound)
   deps.io.emit('new_message', {
     conversationId: convId,
     message: { ...mappedMsg, senderName },
@@ -75,9 +75,11 @@ function processMessage(convId, msg, conv) {
     senderName,
   })
 
-  // Socket.IO — unread_update (só inbound)
+  // unread_update apenas para inbound — independente do unread_count do Chatwoot
+  // (bot pode ter zerado, mas o CRM mantém estado próprio)
   if (isInbound) {
     const count = deps.store.incrementUnread(convId)
+    console.log(`[Poll] INBOUND notificado conv=${convId} unread=${count}`)
     deps.io.emit('unread_update', { conversationId: convId, count, updatedAt: now })
   }
 }
@@ -131,14 +133,20 @@ async function poll() {
       const convId   = String(conv.id)
       const newMsgs  = await fetchNewMessages(convId)
 
-      if (!newMsgs.length) continue
+      if (!newMsgs.length) {
+        // Sem mensagens novas — atualiza cursor para evitar re-fetch
+        const lastMsg = conv.last_non_activity_message
+        if (lastMsg?.id) lastProcessedId.set(convId, Number(lastMsg.id))
+        continue
+      }
 
-      // Processa todas as mensagens novas em ordem
+      // Processa TODAS as mensagens novas em ordem cronológica
+      // (inclui mensagem do cliente E resposta do bot)
       for (const msg of newMsgs) {
         processMessage(convId, msg, conv)
       }
 
-      // Atualiza cursor para o maior ID processado
+      // Cursor avança para o maior ID — garante que próximo ciclo não repete
       const maxId = Math.max(...newMsgs.map(m => Number(m.id)))
       lastProcessedId.set(convId, maxId)
     }
