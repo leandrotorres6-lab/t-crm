@@ -259,4 +259,23 @@ async function upsertManyNoUnread(leads) {
   }
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow }
+// ── Push Subscriptions ───────────────────────────────────────────────────────
+async function savePushSubscription(agentId, subscription) {
+  if (!DB_READY) return
+  const { error } = await supabase.from('push_subscriptions')
+    .upsert({ agent_id: String(agentId), subscription: JSON.stringify(subscription), updated_at: new Date().toISOString() },
+      { onConflict: 'agent_id' })
+  if (error) console.error('[DB] savePushSubscription error:', error.message)
+}
+
+async function loadPushSubscriptions() {
+  if (!DB_READY) return []
+  const { data, error } = await supabase.from('push_subscriptions').select('agent_id, subscription')
+  if (error || !data) return []
+  return data.map(r => {
+    try { return { agentId: r.agent_id, subscription: JSON.parse(r.subscription) } }
+    catch { return null }
+  }).filter(Boolean)
+}
+
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow, savePushSubscription, loadPushSubscriptions }
