@@ -21,7 +21,9 @@ export function ThemeProvider({ children }) {
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
+      <div className={`${theme} h-full flex flex-col`}>
+        {children}
+      </div>
     </ThemeContext.Provider>
   )
 }

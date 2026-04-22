@@ -48,30 +48,30 @@
   padding: 0;
 }
 
-html, body {
+/* ── Layout raiz — mobile sem corte ─────────────────────────────────────── */
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
+body {
   height: 100%;
   height: -webkit-fill-available;
   overflow: hidden;
-}
-
-/* Safe area para iPhone — corrige cortes no topo e rodapé */
-#__next,
-body > div:first-child {
-  height: 100%;
-  height: -webkit-fill-available;
-  box-sizing: border-box;
-}
-
-/* Aplica safe area no layout raiz */
-body {
+  /* Safe areas para iPhone com notch */
   padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+  /* bottom é tratado por componentes que ficam na borda inferior */
   font-family: var(--font-outfit), system-ui, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.2s, color 0.2s;
+}
+
+/* Height chain for providers */
+.dark, [class] > .dark {
+  height: 100%;
 }
 
 /* Custom scrollbars */

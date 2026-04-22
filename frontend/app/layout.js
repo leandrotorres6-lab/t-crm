@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
         <meta httpEquiv="x-dns-prefetch-control" content="on" />
         <link rel="dns-prefetch" href="https://ads.pvcorretor01.com.br" />
       </head>
-      <body>
+      <body className="h-full">
         <ThemeProvider>
           <AppProvider>
             <AppShell>

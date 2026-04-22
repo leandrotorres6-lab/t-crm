@@ -21,7 +21,7 @@ export default function MainLayout({ children, chat, inbox }) {
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-primary)]">
+    <div className="flex overflow-hidden bg-[var(--bg-primary)]" style={{ height: "100dvh", maxHeight: "-webkit-fill-available" }}>
 
       {/* Sidebar — desktop: empurra conteúdo | mobile: overlay */}
       <div className="hidden md:block flex-shrink-0">
