@@ -85,17 +85,18 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           return
         }
         kanbanCache.set(columnId, 1, data)
-        // Merge com timestamps: item do banco tem updatedAt, estado local também
-        // Só aceita unread do banco se for mais recente que o último update local
+        // Merge: preserva dados locais mais recentes (lastMessage, unreadCount, etc)
         setLeads(prev => {
           const prevMap = {}
           prev.forEach(l => { prevMap[l.id] = l })
           return data.items.map(item => {
-            const localTs = unreadUpdatedAt?.current?.[item.id] || '2000-01-01'
-            const remoteTs = item.updatedAt || '2000-01-01'
-            // Se o estado local é mais recente (agente leu após este dado), mantém local
-            if (localTs > remoteTs && prevMap[item.id]) {
-              return { ...item, unreadCount: prevMap[item.id].unreadCount }
+            const local = prevMap[item.id]
+            if (!local) return item
+            // Se o card local tem dados mais recentes, preserva
+            const localTs = local.lastMessageAt || local.updatedAt || ''
+            const remoteTs = item.lastMessageAt || item.updatedAt || ''
+            if (localTs > remoteTs) {
+              return { ...item, lastMessage: local.lastMessage, lastMessageAt: local.lastMessageAt, unreadCount: local.unreadCount }
             }
             return item
           })
@@ -133,6 +134,14 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
       loadLeads(1, true)
     }
   }, [refreshToken])
+
+  // Reporta contagem de não lidas desta coluna (para badge nas bolhas mobile)
+  useEffect(() => {
+    const count = leads.reduce((sum, l) => sum + (unreadCounts[l.id] || l.unreadCount || 0), 0)
+    window.dispatchEvent(new CustomEvent('tcrm:col-unread', {
+      detail: { columnId, hasUnread: count > 0, unreadCount: count }
+    }))
+  }, [leads, unreadCounts, columnId])
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -186,16 +195,18 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           ...card,
           lastMessage: content || card.lastMessage,
           lastMessageAt: ts,
-          // NÃO incrementa unreadCount aqui — AppContext.unreadCounts é a fonte de verdade
-          // KanbanCard lê de unreadCounts[lead.id] que já foi incrementado no AppContext
+          updatedAt: ts,
+          // Incrementa local + global garante que badge aparece imediatamente
+          unreadCount: isInbound !== false ? (card.unreadCount || 0) + 1 : card.unreadCount || 0,
+          // Força React a ver um objeto diferente
+          _tick: Date.now(),
         }
 
-        // Invalida cache
         kanbanCache.invalidate(columnId)
 
-        // Move para o topo
-        if (idx === 0) return [updatedCard, ...prev.slice(1)]
-        return [updatedCard, ...prev.filter((_, i) => i !== idx)]
+        // Sempre gera array novo — move card para o topo
+        const rest = prev.filter((_, i) => i !== idx)
+        return [updatedCard, ...rest]
       })
     }
     window.addEventListener('tcrm:new-message', handler)

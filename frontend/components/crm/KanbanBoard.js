@@ -38,6 +38,9 @@ function UnreadBadge({ unreadCounts }) {
 export default function KanbanBoard() {
   const { unreadCounts, setSelectedLead, setSidebarOpen } = useApp()
   const [columnCounts, setColumnCounts] = useState({})
+  // Mapa coluna → tem não lida (boolean) — para mostrar ponto nas bolhas
+  const [colHasUnread, setColHasUnread] = useState({})
+  const [colUnreadCount, setColUnreadCount] = useState({})
   const [searchResults, setSearchResults] = useState(null)
   const [colRefresh, setColRefresh] = useState({})
   const [notifications, setNotifications] = useState([])
@@ -89,6 +92,16 @@ export default function KanbanBoard() {
       ALL_COLUMNS.forEach(col => { next[col] = (prev[col] || 0) + 1 })
       return next
     })
+  }, [])
+
+  // Escuta eventos de não lidas por coluna (emitidos pelo KanbanColumn)
+  useEffect(() => {
+    const handler = ({ detail: { columnId, hasUnread, unreadCount } }) => {
+      setColHasUnread(prev => prev[columnId] === hasUnread ? prev : { ...prev, [columnId]: hasUnread })
+      setColUnreadCount(prev => prev[columnId] === unreadCount ? prev : { ...prev, [columnId]: unreadCount || 0 })
+    }
+    window.addEventListener('tcrm:col-unread', handler)
+    return () => window.removeEventListener('tcrm:col-unread', handler)
   }, [])
 
   useSocket('new_conversation', (lead) => {
@@ -298,10 +311,12 @@ export default function KanbanBoard() {
             const color = COL_COLORS[col]
             const count = columnCounts[col] || 0
             const isActive = i === mobileCol
+            const hasUnread = !!colHasUnread[col]
+            const unreadNum = colUnreadCount[col] || 0
             return (
               <button key={col} onClick={() => setMobileCol(i)}
                 className="flex flex-col items-center gap-1 flex-shrink-0 transition-all duration-200 active:scale-90">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
+                <div className="relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
                   style={{
                     backgroundColor: isActive ? color : color + '18',
                     border: `2px solid ${isActive ? color : color + '35'}`,
@@ -312,6 +327,23 @@ export default function KanbanBoard() {
                       color: isActive ? 'white' : color }}>
                     {count > 99 ? '99+' : count}
                   </span>
+                  {/* Badge vermelho iOS-style no canto superior direito */}
+                  {hasUnread && (
+                    <span className="absolute flex items-center justify-center font-bold text-white rounded-full shadow-lg"
+                      style={{
+                        top: '-4px', right: '-4px',
+                        minWidth: unreadNum > 9 ? '18px' : '16px',
+                        height: '16px',
+                        fontSize: '9px',
+                        paddingLeft: unreadNum > 9 ? '3px' : '0',
+                        paddingRight: unreadNum > 9 ? '3px' : '0',
+                        backgroundColor: '#ef4444',
+                        border: '1.5px solid var(--bg-secondary)',
+                        lineHeight: '1',
+                      }}>
+                      {unreadNum > 99 ? '99+' : unreadNum}
+                    </span>
+                  )}
                 </div>
                 <span className="text-center font-semibold"
                   style={{ fontSize: '9px', lineHeight: '1.2',
