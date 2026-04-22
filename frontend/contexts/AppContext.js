@@ -84,6 +84,23 @@ export function AppProvider({ children }) {
     }
   })
 
+  // Conversa finalizada/resolvida — remove do kanban e fecha o chat se aberta
+  useSocket('conversation_resolved', ({ id }) => {
+    const convId = String(id)
+    setUnreadCounts(prev => ({ ...prev, [convId]: 0 }))
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:conversation-resolved', { detail: { id: convId } }))
+    }
+    // Se o lead finalizado for o selecionado, fecha o chat
+    setSelectedLeadRaw(prev => {
+      if (prev && String(prev.id) === convId) {
+        activeConvId.current = null
+        return null
+      }
+      return prev
+    })
+  })
+
   useSocket('new_conversation', (lead) => {
     const id = String(lead.id)
     setUnreadCounts(prev => ({ ...prev, [id]: lead.unreadCount || 1 }))

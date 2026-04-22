@@ -57,17 +57,10 @@ function processMessage(convId, msg, senderFallback) {
     if (isInbound) deps.db.incrementUnread(convId).catch(() => {})
   }
 
-  // Reabre cliente finalizado ao receber nova mensagem
-  if (isInbound && deps.store.getColumn) {
-    const currentCol = deps.store.getColumn(convId)
-    if (currentCol === 'finalizado') {
-      console.log(`[Poll] ♻️ Reabrindo cliente finalizado conv=${convId} → leads`)
-      deps.store.setColumn(convId, 'leads')
-      deps.store.invalidateCache?.()
-      if (deps.db.DB_READY?.()) deps.db.moveColumn(convId, 'leads').catch(() => {})
-      deps.io.emit('lead_moved', { id: convId, column: 'leads', fromColumn: 'finalizado' })
-    }
-  }
+  // Reabre conversa resolvida ao receber inbound (comportamento do Chatwoot)
+  // A conversa vem com status='open' automaticamente do Chatwoot quando cliente responde
+  // Aqui só emitimos evento para o frontend atualizar
+  // (O Chatwoot já reabre automaticamente ao receber mensagem inbound)
 
   // Socket — emite SEMPRE (inbound e outbound)
   deps.io.emit('new_message', {

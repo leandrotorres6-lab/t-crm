@@ -61,6 +61,30 @@ async function getMessages(conversationId, before) {
 }
 
 // Marca conversa como lida no Chatwoot (para Chatwoot parar de contar unread)
+// Resolve (finaliza) conversa no Chatwoot — status vira 'resolved'
+async function resolveConversation(conversationId) {
+  try {
+    return await cw(`/conversations/${conversationId}/toggle_status`, {
+      method: 'POST',
+      body: JSON.stringify({ status: 'resolved' }),
+    })
+  } catch (e) {
+    console.warn(`[Chatwoot] resolveConversation failed for ${conversationId}: ${e.message}`)
+  }
+}
+
+// Reabre conversa — status volta para 'open'
+async function reopenConversation(conversationId) {
+  try {
+    return await cw(`/conversations/${conversationId}/toggle_status`, {
+      method: 'POST',
+      body: JSON.stringify({ status: 'open' }),
+    })
+  } catch (e) {
+    console.warn(`[Chatwoot] reopenConversation failed for ${conversationId}: ${e.message}`)
+  }
+}
+
 async function markConversationRead(conversationId) {
   try {
     return await cw(`/conversations/${conversationId}/read`, { method: 'POST' })
@@ -338,7 +362,7 @@ function detectProduct(text) {
 
 module.exports = {
   resolveColumnFromLabels: resolveColumn,
-  getConversations, getConversation, markConversationRead, mapMessage,
+  getConversations, getConversation, markConversationRead, resolveConversation, reopenConversation, mapMessage,
   getMessages, sendMessage, sendAttachment,
   getAgents, assignAgent, getInboxes,
   getAccountLabels, getConversationLabels, setConversationLabels, setKanbanLabel,

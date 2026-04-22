@@ -465,20 +465,26 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Finalizar cliente — remove de todos os kanbans, mantém em Conversas/Agenda
+// Finalizar conversa — usa status 'resolved' do Chatwoot (equivalente a "Resolver")
+// Mantém coluna original intacta, só oculta do Kanban enquanto status=resolved
 app.post('/api/kanban/:id/finalize', async (req, res) => {
   try {
     const { id } = req.params
-    store.setColumn(id, 'finalizado')
+    // Marca como resolved no Chatwoot (fonte de verdade)
+    if (CHATWOOT_READY) await cw.resolveConversation(id)
+    // Zera unread no cache local
+    store.resetUnread(id)
     store.invalidateCache()
-    if (CHATWOOT_READY) cw.setKanbanLabel(id, 'finalizado').catch(e => console.warn(e.message))
-    if (db.DB_READY()) {
-      db.moveColumn(id, 'finalizado').catch(() => {})
-    }
-    io.emit('lead_moved', { id, column: 'finalizado' })
-    console.log(`[Finalize] Lead ${id} finalizado`)
-    res.json({ id, column: 'finalizado' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+    if (db.DB_READY()) db.resetUnread(id).catch(() => {})
+    // Notifica frontend para remover da listagem
+    io.emit('conversation_resolved', { id })
+    io.emit('unread_update', { conversationId: id, count: 0, updatedAt: new Date().toISOString() })
+    console.log(`[Finalize] Conversa ${id} resolvida`)
+    res.json({ id, status: 'resolved' })
+  } catch (e) {
+    console.error('[Finalize]', e.message)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // Lista de agendamentos (para alarme no frontend)

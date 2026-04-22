@@ -303,17 +303,17 @@ function ColumnMover({ currentColumn, onMove }) {
               {col.id === currentColumn && <Check size={13} style={{ color: col.color }} />}
             </button>
           ))}
-          {/* Divider + Finalizar Cliente */}
+          {/* Divider + Finalizar Conversa */}
           <div className="border-t border-[var(--border)]" />
           <button onClick={async () => {
               setOpen(false)
               setMoving(true)
-              await onMove('finalizado')
+              await onMove('__resolve__')
               setMoving(false)
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-red-500/10 transition-colors text-left">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-sm flex-1 text-red-400 font-semibold">Finalizar Cliente</span>
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-green-500/10 transition-colors text-left">
+            <Check size={14} className="text-green-500" />
+            <span className="text-sm flex-1 text-green-400 font-semibold">Finalizar Conversa</span>
           </button>
         </div>
       )}
@@ -1407,14 +1407,14 @@ export default function ChatPanel() {
       setPaymentModal({ lead: selectedLead })
       return
     }
-    if (column === 'finalizado') {
-      if (!confirm(`Finalizar cliente "${selectedLead.name}"? Ele sairá do Kanban mas permanecerá em Conversas e Agenda.`)) return
+    if (column === '__resolve__') {
+      if (!confirm(`Finalizar conversa com "${selectedLead.name}"?\n\nA conversa será marcada como resolvida. Se o cliente enviar nova mensagem, ela volta automaticamente para Leads.`)) return
       try {
         await api.finalizeLead(selectedLead.id)
-        setMoveToast({ text: `✓ Cliente finalizado`, color: '#ef4444' })
+        setMoveToast({ text: `✓ Conversa finalizada`, color: '#22c55e' })
         setTimeout(() => setMoveToast(null), 2500)
-        setSelectedLead(null)  // fecha o chat
-      } catch (e) { console.error('Finalize failed:', e) }
+        setSelectedLead(null)
+      } catch (e) { console.error('Resolve failed:', e) }
       return
     }
 

@@ -168,6 +168,20 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => window.removeEventListener('tcrm:lead-moved', handler)
   }, [columnId])
 
+  // Conversa resolvida — remove de qualquer coluna
+  useEffect(() => {
+    const handler = ({ detail: { id } }) => {
+      setLeads(prev => {
+        const exists = prev.some(l => String(l.id) === String(id))
+        if (!exists) return prev
+        setTotal(t => Math.max(0, t - 1))
+        return prev.filter(l => String(l.id) !== String(id))
+      })
+    }
+    window.addEventListener('tcrm:conversation-resolved', handler)
+    return () => window.removeEventListener('tcrm:conversation-resolved', handler)
+  }, [])
+
   // Conversa lida — zera local unreadCount no card (o global já foi zerado no AppContext)
   useEffect(() => {
     const handler = ({ detail: { conversationId } }) => {
