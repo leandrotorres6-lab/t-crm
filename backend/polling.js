@@ -97,15 +97,19 @@ async function poll() {
       const lastMsg = conv.last_non_activity_message
       const lastId  = lastMsg?.id ? Number(lastMsg.id) : 0
 
-      // ── Conversa nova (não vista no warmup) ──────────────────────────────
+      // ── Conversa nova ou reaberta (não vista no cache atual) ─────────────
       if (!knownConvIds.has(convId)) {
         knownConvIds.add(convId)
         lastProcessedId.set(convId, lastId)
         alreadySeen(lastMsg?.id)
-        const mapped = deps.mapConversation(conv, 'leads')
-        console.log(`[Poll] 🆕 Nova conversa conv=${convId} name="${mapped.name}"`)
-        if (deps.db.DB_READY?.()) deps.db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
-        deps.io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+        const currentCol = deps.store.getColumn?.(convId)
+        // Se não tem coluna definida, trata como nova → leads
+        const mapped = deps.mapConversation(conv, currentCol || 'leads')
+        if (!currentCol) {
+          console.log(`[Poll] 🆕 Nova/reaberta conv=${convId} name="${mapped.name}" → leads`)
+          if (deps.db.DB_READY?.()) deps.db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
+          deps.io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+        }
         continue
       }
 

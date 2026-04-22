@@ -1259,7 +1259,22 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     store.setColumn(conversationId, 'leads')
     store.invalidateCache()
     io.emit('new_conversation', cw.mapConversation(data, 'leads'))
+  }
 
+  // Conversa reaberta (cliente respondeu após ser finalizada)
+  if (event === 'conversation_status_changed' && data.status === 'open') {
+    const convId = String(data.id)
+    const currentCol = store.getColumn(convId)
+    // Se estava finalizada (não tinha coluna ativa), volta para leads
+    if (!currentCol || currentCol === 'finalizado') {
+      console.log(`[Webhook] Conversa ${convId} reaberta → leads`)
+      store.setColumn(convId, 'leads')
+      store.resetUnread && store.resetUnread(convId)
+      store.invalidateCache()
+      if (db.DB_READY()) db.updateMeta(convId, { column: 'leads' }).catch(() => {})
+      io.emit('lead_moved', { id: convId, column: 'leads', fromColumn: 'finalizado' })
+      io.emit('unread_update', { conversationId: convId, count: 1, updatedAt: new Date().toISOString() })
+    }
   }
 
   if (event === 'conversation_updated') {

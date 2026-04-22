@@ -415,7 +415,7 @@ function AgentAssigner({ conversationId, currentAssigneeName, onAssigned }) {
 
 // ─── Componente: painel de etiquetas ─────────────────────────────────────────
 // ─── Barra unificada: etapa + humano ────────────────────────────────────────────
-function UnifiedBar({ conversationId, initialLabels, currentColumn, product, assigneeName, onAssigned, onMove }) {
+function UnifiedBar({ conversationId, initialLabels, currentColumn, product, assigneeName, onAssigned, onMove, onResolve }) {
   const [labels, setLabels] = useState(initialLabels || [])
   const [showMenu, setShowMenu] = useState(false)
   const [togglingHumano, setTogglingHumano] = useState(false)
@@ -517,6 +517,14 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
               ? <><span>❌</span> Plano cancelado</>
               : <><span style={{ opacity: 0.4 }}>❌</span> Plano cancelado</>
           )}
+        </button>
+
+        {/* Finalizar Conversa — equivalente ao "Resolver" do Chatwoot */}
+        <button onClick={onResolve}
+          title="Finalizar conversa — sai do Kanban, volta se cliente responder"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 ml-auto"
+          style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+          <Check size={12} /> Finalizar
         </button>
       </div>
 
