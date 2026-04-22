@@ -1,5 +1,4 @@
 'use client'
-// emoji-picker-react carregado dinamicamente para não pesar o bundle
 import React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../../contexts/AppContext'
@@ -468,14 +467,6 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
     <div className="flex-shrink-0 border-b border-[var(--border)]">
       {/* Linha única: tudo junto, compacto */}
       <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap">
-        {/* Produto */}
-        {product && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-            style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
-            {product}
-          </span>
-        )}
-
         {/* Etapa — clica para mover */}
         <button onClick={() => setShowMenu(o => !o)}
           className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95"
@@ -1248,6 +1239,13 @@ function NotesPanel({ conversationId, notes, setNotes }) {
   )
 }
 
+const QUICK_EMOJIS = [
+  '😊','😃','😄','🙂','😁','😂','🤣','👍','🙏','❤',
+  '✅','🔥','💪','🎉','👏','😍','🤝','💯','⭐','🚀',
+  '😅','😉','😎','🤔','😮','😢','😡','🥰','😇','🤩',
+  '📞','📱','💬','📋','💰','🏠','🚗','📅','⏰','✉',
+]
+
 export default function ChatPanel() {
   const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
   const [messages, setMessages] = useState([])
@@ -1260,14 +1258,7 @@ export default function ChatPanel() {
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [pendingFiles, setPendingFiles] = useState([])  // múltiplos arquivos
-  const [EmojiPicker, setEmojiPicker] = useState(null)
 
-  // Carrega emoji picker só quando necessário
-  useEffect(() => {
-    if (showEmoji && !EmojiPicker) {
-      import('emoji-picker-react').then(mod => setEmojiPicker(() => mod.default))
-    }
-  }, [showEmoji])
   const [isLive, setIsLive] = useState(false)
   const [moveToast, setMoveToast] = useState(null)
   const [activeTab, setActiveTab] = useState('chat')  // 'chat' | 'notas'
@@ -1948,19 +1939,20 @@ export default function ChatPanel() {
                   <Smile size={16} />
                 </button>
                 {showEmoji && (
-                  <div className="absolute bottom-10 left-0 z-50" onClick={e => e.stopPropagation()}>
-                    <EmojiPicker
-                      theme="dark"
-                      skinTonesDisabled
-                      searchDisabled={false}
-                      height={350}
-                      width={300}
-                      onEmojiClick={(emojiData) => {
-                        setInput(prev => prev + emojiData.emoji)
-                        setShowEmoji(false)
-                        textareaRef.current?.focus()
-                      }}
-                    />
+                  <div className="absolute bottom-10 left-0 z-50 rounded-2xl shadow-2xl p-3"
+                    style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', width: '264px' }}
+                    onClick={e => e.stopPropagation()}>
+                    <p className="text-xs text-[var(--text-muted)] mb-2 font-medium">Emojis rápidos</p>
+                    <div className="grid grid-cols-10 gap-0.5">
+                      {QUICK_EMOJIS.map((em, i) => (
+                        <button key={i}
+                          onClick={() => { setInput(prev => prev + em); setShowEmoji(false); textareaRef.current?.focus() }}
+                          className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] transition-colors"
+                          style={{ fontSize: '16px', lineHeight: 1 }}>
+                          {em}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
