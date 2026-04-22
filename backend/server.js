@@ -425,11 +425,27 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
     const { id } = req.params
     const { column, fromColumn } = req.body
     store.setColumn(id, column)
+
+    // Limpa metadados da coluna de origem ao sair dela
+    const metaUpdates = {}
+    if (fromColumn === 'aguardando_pagamento' && column !== 'aguardando_pagamento') {
+      store.setMeta(id, { paymentDueDate: null, observacao: '' })
+      metaUpdates.paymentDueDate = null
+    }
+    if (fromColumn === 'agendado' && column !== 'agendado') {
+      store.setMeta(id, { scheduledAt: null, observacao: '' })
+      metaUpdates.scheduledAt = null
+    }
+
     store.invalidateCache()
 
     // Atualiza Supabase e Chatwoot em paralelo (background)
     Promise.all([
-      db.DB_READY() ? db.moveColumn(id, column) : Promise.resolve(),
+      db.DB_READY() ? db.moveColumn(id, column).then(() => {
+        if (Object.keys(metaUpdates).length > 0) {
+          return db.updateMeta(id, metaUpdates)
+        }
+      }) : Promise.resolve(),
       CHATWOOT_READY ? cw.setKanbanLabel(id, column).catch(e => console.warn('Label update failed:', e.message)) : Promise.resolve(),
     ]).catch(() => {})
 
