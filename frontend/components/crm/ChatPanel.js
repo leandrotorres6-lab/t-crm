@@ -466,61 +466,51 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
 
   return (
     <div className="flex-shrink-0 border-b border-[var(--border)]">
-      {/* Linha 1: produto + agente */}
-      {(product || assigneeName) && (
-        <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-          {product && (
-            <span className="text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
-              {product}
-            </span>
-          )}
-          <div className="ml-auto">
-            <AgentAssigner conversationId={conversationId} currentAssigneeName={assigneeName} onAssigned={onAssigned} />
-          </div>
-        </div>
-      )}
+      {/* Linha única: tudo junto, compacto */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap">
+        {/* Produto */}
+        {product && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: 'rgba(59,130,246,0.08)', color: '#93c5fd' }}>
+            {product}
+          </span>
+        )}
 
-      {/* Linha 2: etapa atual + humano */}
-      <div className="flex items-center gap-2 px-4 py-2">
-        {/* Botão da etapa — clica para mover */}
+        {/* Etapa — clica para mover */}
         <button onClick={() => setShowMenu(o => !o)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:opacity-80"
-          style={{ backgroundColor: curCol.color + '20', color: curCol.color, border: `1px solid ${curCol.color}30` }}>
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: curCol.color }} />
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+          style={{ backgroundColor: curCol.color + '18', color: curCol.color, border: `1px solid ${curCol.color}28` }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: curCol.color }} />
           {curCol.label}
-          <ChevronDown size={11} />
+          <ChevronDown size={9} />
         </button>
 
-        {/* Toggle humano — desativa/ativa bot */}
+        {/* Toggle humano */}
         <button onClick={toggleHumano} disabled={togglingHumano}
-          title={hasHumano ? 'Clique para reativar o robô' : 'Clique para desativar o robô'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          title={hasHumano ? 'Reativar robô' : 'Desativar robô'}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-40"
           style={hasHumano
-            ? { backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }
+            ? { backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }
             : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-          {togglingHumano ? '...' : (
-            hasHumano
-              ? <><span>🤝</span> humano<span style={{ opacity: 0.6, fontSize: '9px' }}> · bot off</span></>
-              : <><span style={{ opacity: 0.4 }}>🤖</span> humano</>
-          )}
+          {togglingHumano ? '·' : hasHumano
+            ? <><span style={{fontSize:'10px'}}>🤝</span> humano <span style={{opacity:0.5,fontSize:'9px'}}>·off</span></>
+            : <><span style={{opacity:0.35,fontSize:'10px'}}>🤖</span> humano</>}
         </button>
 
-        {/* Toggle cancelado — contabiliza no dashboard, remove do kanban */}
+        {/* Toggle cancelado */}
         <button onClick={toggleCancelado} disabled={togglingCancelado}
-          title={hasCancelado ? 'Clique para desmarcar plano cancelado' : 'Marcar plano como cancelado'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          title={hasCancelado ? 'Desmarcar cancelado' : 'Plano cancelado'}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-40"
           style={hasCancelado
-            ? { backgroundColor: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }
+            ? { backgroundColor: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }
             : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-          {togglingCancelado ? '...' : (
-            hasCancelado
-              ? <><span>❌</span> Plano cancelado</>
-              : <><span style={{ opacity: 0.4 }}>❌</span> Plano cancelado</>
-          )}
+          {togglingCancelado ? '·' : <><span style={{fontSize:'10px'}}>✕</span> {hasCancelado ? 'Cancelado' : 'Cancelar'}</>}
         </button>
 
-
+        {/* Agente — alinhado à direita */}
+        <div className="ml-auto">
+          <AgentAssigner conversationId={conversationId} currentAssigneeName={assigneeName} onAssigned={onAssigned} />
+        </div>
       </div>
 
       {/* Modal de seleção de etapa */}
@@ -1289,6 +1279,15 @@ export default function ChatPanel() {
   const [slashMenu, setSlashMenu] = useState({ open: false, query: '', filtered: [] })
   const [showTplManager, setShowTplManager] = useState(false)
   const textareaRef = useRef(null)
+
+  // Auto-resize textarea ao digitar (estilo WhatsApp)
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const newH = Math.min(el.scrollHeight, 160)  // máximo 160px (~6 linhas)
+    el.style.height = newH + 'px'
+  }, [input])
   const [contactTyping, setContactTyping] = useState(false)
   const typingTimeoutRef = useRef(null)
   const typingDebounceRef = useRef(null)
@@ -2023,7 +2022,7 @@ export default function ChatPanel() {
                 placeholder="Digite / para mensagens rápidas..."
                 rows={1}
                 className="flex-1 bg-transparent resize-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] leading-relaxed"
-                style={{ maxHeight: '100px', minHeight: '24px' }} />
+                style={{ minHeight: '24px', overflowY: 'auto', transition: 'height 0.1s ease' }} />
 
               {/* Mic ou Send */}
               {input.trim() ? (
