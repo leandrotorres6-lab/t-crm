@@ -1283,6 +1283,7 @@ server.listen(PORT, async () => {
         db,
         targetInboxId,
         mapMessage: cw.mapMessage,
+        mapConversation: cw.mapConversation,
       })
     })
     .catch(e => console.warn('⚠️  Pré-carga falhou:', e.message))

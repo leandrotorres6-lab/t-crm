@@ -88,7 +88,14 @@ export function AppProvider({ children }) {
   })
 
   useSocket('new_conversation', (lead) => {
-    setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: 1 }))
+    const id = String(lead.id)
+    setUnreadCounts(prev => ({ ...prev, [id]: lead.unreadCount || 1 }))
+    // Toast de novo lead
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:toast', {
+        detail: { text: `🆕 Novo lead: ${lead.name || 'Contato'}`, conversationId: id }
+      }))
+    }
   })
 
   // Nova mensagem recebida → sobe card, incrementa badge, atualiza horário

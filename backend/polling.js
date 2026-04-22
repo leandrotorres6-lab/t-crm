@@ -6,6 +6,7 @@ const POLL_INTERVAL = 3000
 // convId → maior messageId processado (número para comparação correta)
 const lastProcessedId = new Map()
 const processedSet    = new Set()  // dedup global, últimos 500
+const knownConvIds    = new Set()  // conversas já vistas (para detectar novas)
 let pollTimer  = null
 let isPolling  = false
 let warmDone   = false
@@ -94,6 +95,27 @@ async function poll() {
     })
     if (!convs?.length) { isPolling = false; return }
 
+    // ── Detecta conversas NOVAS (nunca vistas antes) ─────────────────────────
+    for (const conv of convs) {
+      const convId = String(conv.id)
+      if (!knownConvIds.has(convId)) {
+        knownConvIds.add(convId)
+        // Apenas emite se já terminou o warmup (evita flood na inicialização)
+        if (warmDone) {
+          const mapped = deps.mapConversation(conv, 'leads')
+          console.log(`[Poll] Nova conversa detectada: conv=${convId} name="${mapped.name}"`)
+
+          // Upsert no Supabase
+          if (deps.db.DB_READY?.()) {
+            deps.db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
+          }
+
+          // Emite para o frontend
+          deps.io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+        }
+      }
+    }
+
     // Processa em paralelo limitado (máx 5 simultâneos) para não explodir a API
     const changed = convs.filter(conv => {
       const lastMsg = conv.last_non_activity_message
@@ -152,8 +174,9 @@ async function warmUp() {
         lastProcessedId.set(convId, Number(lastMsg.id))
         alreadySeen(lastMsg.id)
       }
+      knownConvIds.add(convId)  // marca como conhecida no warmup
     }
-    console.log(`[Poll] ✅ Cache aquecido: ${lastProcessedId.size} conversas`)
+    console.log(`[Poll] ✅ Cache aquecido: ${lastProcessedId.size} conversas, ${knownConvIds.size} IDs conhecidos`)
     warmDone = true
   } catch (e) {
     console.warn('[Poll] Warmup falhou:', e.message)
@@ -165,6 +188,19 @@ async function warmUp() {
 function start(injected) {
   if (pollTimer) return
   deps = injected
+  // mapConversation pode não estar no injected — fallback para identidade
+  if (!deps.mapConversation) {
+    deps.mapConversation = (conv, col) => ({
+      id: String(conv.id),
+      name: conv.meta?.sender?.name || `Contato #${conv.id}`,
+      phone: conv.meta?.sender?.phone_number || '',
+      column: col || 'leads',
+      lastMessage: conv.last_non_activity_message?.content || '',
+      unreadCount: conv.unread_count || 1,
+      assignedTo: conv.meta?.assignee?.id ? String(conv.meta.assignee.id) : null,
+      assigneeName: conv.meta?.assignee?.name || '',
+    })
+  }
   console.log(`[Poll] ✅ Iniciado — detecção por messageId, intervalo ${POLL_INTERVAL / 1000}s`)
   warmUp().then(() => { pollTimer = setInterval(poll, POLL_INTERVAL) })
 }
