@@ -11,10 +11,13 @@ export function getSocket() {
     socket = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 3000,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
-      timeout: 10000,
+      timeout: 20000,
+      // Mobile: aumenta ping interval para reduzir tráfego de fundo
+      pingInterval: 25000,
+      pingTimeout: 20000,
     })
     socket.on('connect', () => console.log('[Socket] ✅ Conectado ao backend'))
     socket.on('disconnect', (reason) => console.warn('[Socket] ❌ Desconectado:', reason))

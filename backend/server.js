@@ -445,6 +445,11 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
     store.setColumn(id, 'agendado')
     store.setMeta(id, { scheduledAt, observacao: observacao || '' })
     store.invalidateCache()
+    // Persiste coluna + scheduledAt no Supabase
+    if (db.DB_READY()) {
+      db.moveColumn(id, 'agendado').catch(() => {})
+      db.upsertLead({ id, column: 'agendado', scheduledAt: scheduledAt || null, observacao: observacao || '' }).catch(() => {})
+    }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'agendado').catch(e => console.warn(e.message))
     io.emit('lead_moved', { id, column: 'agendado', scheduledAt })
     res.json({ id, column: 'agendado', scheduledAt, observacao })
@@ -459,6 +464,11 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
     store.setColumn(id, 'aguardando_pagamento')
     store.setMeta(id, { paymentDueDate, observacao: observacao || '' })
     store.invalidateCache()
+    // Persiste no Supabase
+    if (db.DB_READY()) {
+      db.moveColumn(id, 'aguardando_pagamento').catch(() => {})
+      db.upsertLead({ id, column: 'aguardando_pagamento', paymentDueDate: paymentDueDate || null, observacao: observacao || '' }).catch(() => {})
+    }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'aguardando_pagamento').catch(e => console.warn(e.message))
     io.emit('lead_moved', { id, column: 'aguardando_pagamento', paymentDueDate })
     res.json({ id, column: 'aguardando_pagamento', paymentDueDate, observacao })
@@ -487,30 +497,38 @@ app.post('/api/kanban/:id/finalize', async (req, res) => {
   }
 })
 
-// Lista de agendamentos (para alarme no frontend)
+// Lista de agendamentos — usa Supabase primeiro (mais rápido), fallback para store
 app.get('/api/agendamentos', async (req, res) => {
   try {
-    const all = await getAllConversations()
-    const agendados = all
-      .filter(c => c.column === 'agendado' && c.scheduledAt)
-      .map(c => {
-        const meta = store.getMeta(c.id)
-        return { ...c, observacao: meta.observacao || '' }
-      })
+    const { agentId, role } = req.query
+    if (db.DB_READY()) {
+      const all = await db.getAll()
+      let agendados = all.filter(c => c.column === 'agendado' && c.scheduledAt)
+      if (role === 'vendedor' && agentId) agendados = agendados.filter(c => c.assignedTo === agentId)
+      return res.json(agendados)
+    }
+    // Fallback: store em memória
+    const cached = store.getCache()
+    const all = cached ? Object.values(cached) : await getAllConversations()
+    let agendados = all.filter(c => c.column === 'agendado' && c.scheduledAt)
+      .map(c => ({ ...c, observacao: store.getMeta(c.id).observacao || '' }))
+    if (role === 'vendedor' && agentId) agendados = agendados.filter(c => c.assignedTo === agentId)
     res.json(agendados)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Lista de aguardando pagamento (para página de pagamentos)
+// Lista de aguardando pagamento — usa Supabase primeiro
 app.get('/api/pagamentos', async (req, res) => {
   try {
-    const all = await getAllConversations()
-    const pagamentos = all
-      .filter(c => c.column === 'aguardando_pagamento')
-      .map(c => {
-        const meta = store.getMeta(c.id)
-        return { ...c, paymentDueDate: meta.paymentDueDate || null, observacao: meta.observacao || '' }
-      })
+    if (db.DB_READY()) {
+      const all = await db.getAll()
+      const pagamentos = all.filter(c => c.column === 'aguardando_pagamento')
+      return res.json(pagamentos)
+    }
+    const cached = store.getCache()
+    const all = cached ? Object.values(cached) : await getAllConversations()
+    const pagamentos = all.filter(c => c.column === 'aguardando_pagamento')
+      .map(c => ({ ...c, paymentDueDate: store.getMeta(c.id).paymentDueDate || null, observacao: store.getMeta(c.id).observacao || '' }))
     res.json(pagamentos)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
