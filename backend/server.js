@@ -1013,11 +1013,16 @@ app.get('/api/push/vapid-key', (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC })
 })
 
-app.post('/api/push/subscribe', (req, res) => {
+app.post('/api/push/subscribe', async (req, res) => {
   const { subscription, agentId } = req.body
   if (!subscription) return res.status(400).json({ error: 'subscription required' })
-  pushSubscriptions.set(agentId || 'anon', subscription)
-  console.log(`[Push] Agente ${agentId} inscrito para notificações`)
+  const key = agentId || 'anon'
+  pushSubscriptions.set(key, subscription)
+  console.log(`[Push] Agente ${key} inscrito. Total: ${pushSubscriptions.size}`)
+  // Persiste no Supabase para sobreviver a redeploy
+  if (db.DB_READY()) {
+    db.savePushSubscription(key, subscription).catch(() => {})
+  }
   res.json({ ok: true })
 })
 
@@ -1275,6 +1280,16 @@ server.listen(PORT, async () => {
       if (db.DB_READY()) {
         db.upsertMany(all).then(() => console.log('✅ Supabase sincronizado'))
       }
+      // Restaura push subscriptions do Supabase (sobrevivem a redeploy)
+      if (db.DB_READY()) {
+        db.loadPushSubscriptions().then(subs => {
+          subs.forEach(({ agentId, subscription }) => {
+            pushSubscriptions.set(agentId, subscription)
+          })
+          if (subs.length) console.log(`[Push] ${subs.length} subscriptions restauradas do Supabase`)
+        }).catch(() => {})
+      }
+
       // Inicia polling do Chatwoot (substitui webhook quando VPS não alcança Railway)
       polling.start({
         cw,
