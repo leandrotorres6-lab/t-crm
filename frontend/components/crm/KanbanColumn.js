@@ -75,7 +75,10 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
         }
       }
 
-      const data = await api.getColumnLeads(columnId, pageNum, currentAgent?.id, currentAgent?.role)
+      // Se supervisor escolheu um vendedor específico, usa o ID dele como filtro
+      const queryAgentId = agentFilter ? agentFilter.id : currentAgent?.id
+      const queryRole    = agentFilter ? 'vendedor' : (currentAgent?.role || 'vendedor')
+      const data = await api.getColumnLeads(columnId, pageNum, queryAgentId, queryRole)
 
       if (pageNum === 1) {
         if (data.cacheReady === false && data.items.length === 0) {

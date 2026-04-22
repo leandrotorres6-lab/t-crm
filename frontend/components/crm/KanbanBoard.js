@@ -36,7 +36,10 @@ function UnreadBadge({ unreadCounts }) {
 }
 
 export default function KanbanBoard() {
-  const { unreadCounts, setSelectedLead, setSidebarOpen } = useApp()
+  const { unreadCounts, setSelectedLead, setSidebarOpen, currentAgent } = useApp()
+  // Supervisor: filtro de agente (null = todos, id = vendedor específico)
+  const [filterAgent, setFilterAgent] = useState(null)   // { id, name }
+  const [agents, setAgents] = useState([])
   const [columnCounts, setColumnCounts] = useState({})
   // Mapa coluna → tem não lida (boolean) — para mostrar ponto nas bolhas
   const [colHasUnread, setColHasUnread] = useState({})
@@ -45,6 +48,18 @@ export default function KanbanBoard() {
   const [colRefresh, setColRefresh] = useState({})
   const [notifications, setNotifications] = useState([])
   const [toasts, setToasts] = useState([])
+
+  // Carrega lista de agentes para o filtro do supervisor
+  useEffect(() => {
+    if (currentAgent?.role !== 'supervisor') return
+    api.getAgents().then(list => {
+      // Só vendedores (não supervisores/admins)
+      const vendedores = (list || []).filter(a =>
+        a.role !== 'supervisor' && a.role !== 'administrator' && a.name
+      )
+      setAgents(vendedores)
+    }).catch(() => {})
+  }, [currentAgent?.role])
 
   // Escuta toasts de nova mensagem
   useEffect(() => {
@@ -195,6 +210,33 @@ export default function KanbanBoard() {
             <button onClick={refreshAll} className="btn-ghost" title="Atualizar">
               <RefreshCw size={14} />
             </button>
+            {/* Abas de vendedor — só para supervisor */}
+            {currentAgent?.role === 'supervisor' && agents.length > 0 && (
+              <div className="flex items-center gap-1 ml-1 bg-[var(--bg-secondary)] rounded-lg p-0.5">
+                <button
+                  onClick={() => setFilterAgent(null)}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
+                  style={{
+                    backgroundColor: !filterAgent ? 'var(--bg-card)' : 'transparent',
+                    color: !filterAgent ? 'var(--text-primary)' : 'var(--text-muted)',
+                    boxShadow: !filterAgent ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+                  }}>
+                  Todos
+                </button>
+                {agents.map(a => (
+                  <button key={a.id}
+                    onClick={() => setFilterAgent(filterAgent?.id === a.id ? null : { id: a.id, name: a.name })}
+                    className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all whitespace-nowrap"
+                    style={{
+                      backgroundColor: filterAgent?.id === a.id ? 'var(--bg-card)' : 'transparent',
+                      color: filterAgent?.id === a.id ? '#60a5fa' : 'var(--text-muted)',
+                      boxShadow: filterAgent?.id === a.id ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+                    }}>
+                    {a.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
+            )}
             <button onClick={() => scrollBy(-1)} className="p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]">
               <ChevronLeft size={16} />
             </button>
@@ -295,8 +337,9 @@ export default function KanbanBoard() {
           onDragOver={handleDragOver} onDragEnd={stopAutoScroll}>
           <div className="flex gap-3 p-4 h-full" style={{ minWidth: 'max-content' }}>
             {ALL_COLUMNS.map(col => (
-              <KanbanColumn key={col} columnId={col}
-                refreshToken={colRefresh[col] || 0} onDrop={handleDrop} />
+              <KanbanColumn key={`${col}-${filterAgent?.id || 'all'}`} columnId={col}
+                refreshToken={colRefresh[col] || 0} onDrop={handleDrop}
+                agentFilter={filterAgent} />
             ))}
           </div>
         </div>
@@ -372,7 +415,7 @@ export default function KanbanBoard() {
                   ? 'translateX(0)'
                   : i < mobileCol ? 'translateX(-100%)' : 'translateX(100%)',
               }}>
-              <KanbanColumn columnId={col} refreshToken={colRefresh[col] || 0} onDrop={handleDrop} />
+              <KanbanColumn columnId={col} refreshToken={colRefresh[col] || 0} onDrop={handleDrop} agentFilter={filterAgent} />
             </div>
           ))}
         </div>
