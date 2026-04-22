@@ -197,41 +197,25 @@ export default function KanbanBoard() {
         />
       </div>
 
-      {/* ── Mobile: header da coluna atual ── */}
-      <div className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-[var(--border)] flex-shrink-0">
-        {/* Hamburger */}
+      {/* ── Mobile: header compacto ── */}
+      <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] flex-shrink-0"
+        style={{ backgroundColor: 'var(--bg-secondary)' }}>
         <button onClick={() => setSidebarOpen(true)}
           className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        {/* Nome + badge + dots */}
-        <div className="flex flex-col flex-1 items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentColor }} />
-            <span className="text-sm font-bold text-[var(--text-primary)]">{COL_LABELS[currentColId]}</span>
-            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-              style={{ backgroundColor: currentColor + '20', color: currentColor }}>
-              {columnCounts[currentColId] || 0}
-            </span>
-          </div>
-          {/* Dots clicáveis */}
-          <div className="flex gap-1 mt-1.5">
-            {ALL_COLUMNS.map((_, i) => (
-              <button key={i} onClick={() => setMobileCol(i)}
-                className="rounded-full transition-all duration-300"
-                style={{
-                  width: i === mobileCol ? '18px' : '6px',
-                  height: '6px',
-                  backgroundColor: i === mobileCol ? currentColor : 'var(--border)',
-                }} />
-            ))}
-          </div>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentColor }} />
+          <span className="text-sm font-bold text-[var(--text-primary)] truncate">{COL_LABELS[currentColId]}</span>
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+            style={{ backgroundColor: currentColor + '20', color: currentColor }}>
+            {columnCounts[currentColId] || 0}
+          </span>
         </div>
-        <button onClick={refreshAll}
-          className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
-          <RefreshCw size={14} className={false ? 'animate-spin' : ''} />
+        <button onClick={refreshAll} className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+          <RefreshCw size={13} />
         </button>
       </div>
 
@@ -305,43 +289,40 @@ export default function KanbanBoard() {
         </div>
       </div>
 
-      {/* ── Mobile: pills de navegação no TOPO (abaixo do header) ── */}
-      <div className="md:hidden flex items-center justify-between px-3 py-2 border-b border-[var(--border)] flex-shrink-0"
+      {/* ── Mobile: bolhas de navegação ── */}
+      <div className="md:hidden border-b border-[var(--border)] flex-shrink-0"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
-        {/* Pill esquerda */}
-        {mobileCol > 0 ? (
-          <button onClick={() => setMobileCol(i => i - 1)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
-            style={{
-              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol - 1]] + '25',
-              color: COL_COLORS[ALL_COLUMNS[mobileCol - 1]],
-              border: `1px solid ${COL_COLORS[ALL_COLUMNS[mobileCol - 1]]}40`,
-            }}>
-            <ChevronLeft size={13} />
-            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '70px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-              {COL_LABELS[ALL_COLUMNS[mobileCol - 1]]}
-            </span>
-          </button>
-        ) : <div className="w-20" />}
-
-        {/* Swipe hint */}
-        <p className="text-xs text-[var(--text-muted)]" style={{ fontSize: '10px' }}>deslize ←→</p>
-
-        {/* Pill direita */}
-        {mobileCol < ALL_COLUMNS.length - 1 ? (
-          <button onClick={() => setMobileCol(i => i + 1)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
-            style={{
-              backgroundColor: COL_COLORS[ALL_COLUMNS[mobileCol + 1]] + '25',
-              color: COL_COLORS[ALL_COLUMNS[mobileCol + 1]],
-              border: `1px solid ${COL_COLORS[ALL_COLUMNS[mobileCol + 1]]}40`,
-            }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', maxWidth: '70px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-              {COL_LABELS[ALL_COLUMNS[mobileCol + 1]]}
-            </span>
-            <ChevronRight size={13} />
-          </button>
-        ) : <div className="w-20" />}
+        <div className="flex gap-2.5 px-3 py-2.5 overflow-x-auto"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {ALL_COLUMNS.map((col, i) => {
+            const color = COL_COLORS[col]
+            const count = columnCounts[col] || 0
+            const isActive = i === mobileCol
+            return (
+              <button key={col} onClick={() => setMobileCol(i)}
+                className="flex flex-col items-center gap-1 flex-shrink-0 transition-all duration-200 active:scale-90">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
+                  style={{
+                    backgroundColor: isActive ? color : color + '18',
+                    border: `2px solid ${isActive ? color : color + '35'}`,
+                    boxShadow: isActive ? `0 0 14px ${color}55` : 'none',
+                  }}>
+                  <span className="font-bold leading-none"
+                    style={{ fontSize: count > 99 ? '10px' : count > 9 ? '13px' : '16px',
+                      color: isActive ? 'white' : color }}>
+                    {count > 99 ? '99+' : count}
+                  </span>
+                </div>
+                <span className="text-center font-semibold"
+                  style={{ fontSize: '9px', lineHeight: '1.2',
+                    color: isActive ? color : 'var(--text-muted)',
+                    maxWidth: '48px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {COL_LABELS[col]}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Mobile: colunas com swipe horizontal ── */}

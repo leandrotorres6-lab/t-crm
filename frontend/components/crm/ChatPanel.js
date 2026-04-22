@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
@@ -1622,19 +1623,34 @@ export default function ChatPanel() {
             </div>
           </div>
         )}
-        {hasMore && !loadingMore && (
-          <button onClick={loadOlder}
-            className="w-full flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] py-2 mb-2 hover:bg-[var(--bg-hover)] rounded-lg">
-            <ChevronUp size={12} /> Ver mensagens anteriores
-          </button>
-        )}
         {loadingInit
           ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[var(--text-muted)]" /></div>
-          : groupByDate(messages).map((item, i) =>
-              item.type === 'date'
-                ? <DateSeparator key={`date-${i}`} label={item.label} />
-                : <MessageBubble key={item.msg.id} msg={item.msg} />
-            )
+          : groupByDate(messages).map((item, i) => {
+              if (item.type === 'date') {
+                // Botão "carregar mais" aparece junto ao PRIMEIRO separador de data
+                const isFirst = i === 0
+                return (
+                  <React.Fragment key={`date-${i}`}>
+                    {isFirst && loadingMore && (
+                      <div className="flex justify-center mb-2">
+                        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] px-3 py-1.5 rounded-full"
+                          style={{ backgroundColor: 'var(--bg-hover)' }}>
+                          <Loader2 size={12} className="animate-spin" /> Carregando...
+                        </div>
+                      </div>
+                    )}
+                    {isFirst && hasMore && !loadingMore && (
+                      <button onClick={loadOlder}
+                        className="w-full flex items-center justify-center gap-2 text-xs text-[var(--text-muted)] py-1.5 mb-1 hover:bg-[var(--bg-hover)] rounded-lg transition-colors">
+                        <ChevronUp size={11} /> Ver mensagens anteriores
+                      </button>
+                    )}
+                    <DateSeparator label={item.label} />
+                  </React.Fragment>
+                )
+              }
+              return <MessageBubble key={item.msg.id} msg={item.msg} />
+            })
         }
         <div ref={messagesEndRef} />
       </div>
