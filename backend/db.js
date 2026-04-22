@@ -136,7 +136,7 @@ async function getByColumn(kanbanColumn, { limit = 15, offset = 0, assignedTo = 
     .order('last_message_at', { ascending: false, nullsLast: true })
     .range(offset, offset + limit - 1)
 
-  if (assignedTo) query = query.eq('assigned_to', assignedTo)
+  if (assignedTo) query = query.eq('assigned_to', Number(assignedTo))
 
   const { data, error, count } = await query
 
@@ -225,7 +225,7 @@ async function search({ q, kanbanColumn, assigneeName, product, assignedTo } = {
   let query = supabase.from('leads').select('*').eq('status', 'open')
 
   if (kanbanColumn) query = query.eq('kanban_column', kanbanColumn)
-  if (assignedTo) query = query.eq('assigned_to', assignedTo)
+  if (assignedTo) query = query.eq('assigned_to', Number(assignedTo))
   if (assigneeName) query = query.ilike('assignee_name', `%${assigneeName}%`)
   if (product) query = query.ilike('product', `%${product}%`)
   if (q) {
@@ -246,7 +246,7 @@ async function search({ q, kanbanColumn, assigneeName, product, assignedTo } = {
 async function getAll({ assignedTo = null } = {}) {
   if (!DB_READY) return null
   let query = supabase.from('leads').select('*').eq('status', 'open')
-  if (assignedTo) query = query.eq('assigned_to', assignedTo)
+  if (assignedTo) query = query.eq('assigned_to', Number(assignedTo))
   query = query
     .order('unread_count', { ascending: false })
     .order('last_message_at', { ascending: false, nullsLast: true })
