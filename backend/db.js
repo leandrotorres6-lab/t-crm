@@ -95,6 +95,19 @@ async function upsertLead(lead) {
   return !error
 }
 
+// ── Update parcial de metadados (schedule/payment sem sobrescrever outros campos) ──
+async function updateMeta(id, fields) {
+  if (!DB_READY) return
+  const row = {}
+  if (fields.column !== undefined)         row.kanban_column     = fields.column
+  if (fields.scheduledAt !== undefined)    row.scheduled_at      = fields.scheduledAt
+  if (fields.paymentDueDate !== undefined) row.payment_due_date  = fields.paymentDueDate
+  if (fields.observacao !== undefined)     row.observacao        = fields.observacao
+  row.updated_at = new Date().toISOString()
+  const { error } = await supabase.from('leads').update(row).eq('id', String(id))
+  if (error) console.error('[DB] updateMeta error:', error.message)
+}
+
 // ── Upsert em lote (sincronização inicial) ────────────────────────────────────
 async function upsertMany(leads) {
   if (!DB_READY || !leads.length) return
@@ -278,4 +291,4 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow, savePushSubscription, loadPushSubscriptions }
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow, savePushSubscription, loadPushSubscriptions, updateMeta }

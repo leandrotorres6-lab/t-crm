@@ -447,8 +447,7 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
     store.invalidateCache()
     // Persiste coluna + scheduledAt no Supabase
     if (db.DB_READY()) {
-      db.moveColumn(id, 'agendado').catch(() => {})
-      db.upsertLead({ id, column: 'agendado', scheduledAt: scheduledAt || null, observacao: observacao || '' }).catch(() => {})
+      db.updateMeta(id, { column: 'agendado', scheduledAt: scheduledAt || null, observacao: observacao || '' }).catch(() => {})
     }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'agendado').catch(e => console.warn(e.message))
     io.emit('lead_moved', { id, column: 'agendado', scheduledAt })
@@ -466,8 +465,7 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
     store.invalidateCache()
     // Persiste no Supabase
     if (db.DB_READY()) {
-      db.moveColumn(id, 'aguardando_pagamento').catch(() => {})
-      db.upsertLead({ id, column: 'aguardando_pagamento', paymentDueDate: paymentDueDate || null, observacao: observacao || '' }).catch(() => {})
+      db.updateMeta(id, { column: 'aguardando_pagamento', paymentDueDate: paymentDueDate || null, observacao: observacao || '' }).catch(() => {})
     }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'aguardando_pagamento').catch(e => console.warn(e.message))
     io.emit('lead_moved', { id, column: 'aguardando_pagamento', paymentDueDate })
