@@ -706,7 +706,9 @@ app.get('/api/messages/:leadId', async (req, res) => {
     const raw = await cw.getMessages(leadId, before)
     const messages = raw.filter(m => m.message_type <= 1).map(cw.mapMessage)
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-    res.json({ messages, hasMore: false })
+    // Chatwoot retorna 20 mensagens por página — se veio 20, há mais para carregar
+    const hasMore = raw.length >= 20
+    res.json({ messages, hasMore })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
