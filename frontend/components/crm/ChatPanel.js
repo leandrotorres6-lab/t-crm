@@ -469,33 +469,34 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
       <div className="flex items-center gap-1.5 px-3 py-1.5 flex-wrap">
         {/* Etapa — clica para mover */}
         <button onClick={() => setShowMenu(o => !o)}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-          style={{ backgroundColor: curCol.color + '18', color: curCol.color, border: `1px solid ${curCol.color}28` }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: curCol.color }} />
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-bold transition-all active:scale-95"
+          style={{ backgroundColor: curCol.color + '18', color: curCol.color,
+            border: `1px solid ${curCol.color}28`, fontSize: '10px' }}>
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: curCol.color }} />
           {curCol.label}
-          <ChevronDown size={9} />
+          <ChevronDown size={8} />
         </button>
 
         {/* Toggle humano */}
         <button onClick={toggleHumano} disabled={togglingHumano}
           title={hasHumano ? 'Reativar robô' : 'Desativar robô'}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-40"
-          style={hasHumano
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-semibold transition-all active:scale-95 disabled:opacity-40"
+          style={{ fontSize: '10px', ...(hasHumano
             ? { backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }
-            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }) }}>
           {togglingHumano ? '·' : hasHumano
-            ? <><span style={{fontSize:'10px'}}>🤝</span> humano <span style={{opacity:0.5,fontSize:'9px'}}>·off</span></>
-            : <><span style={{opacity:0.35,fontSize:'10px'}}>🤖</span> humano</>}
+            ? <>🤝 humano <span style={{opacity:0.5,fontSize:'8px'}}>·off</span></>
+            : <><span style={{opacity:0.35}}>🤖</span> humano</>}
         </button>
 
         {/* Toggle cancelado */}
         <button onClick={toggleCancelado} disabled={togglingCancelado}
-          title={hasCancelado ? 'Desmarcar cancelado' : 'Plano cancelado'}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-40"
-          style={hasCancelado
+          title={hasCancelado ? 'Desmarcar cancelado' : 'Cancelar plano'}
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-semibold transition-all active:scale-95 disabled:opacity-40"
+          style={{ fontSize: '10px', ...(hasCancelado
             ? { backgroundColor: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }
-            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-          {togglingCancelado ? '·' : <><span style={{fontSize:'10px'}}>✕</span> {hasCancelado ? 'Cancelado' : 'Cancelar'}</>}
+            : { backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }) }}>
+          {togglingCancelado ? '·' : <>✕ {hasCancelado ? 'Cancelado' : 'Cancelar'}</>}
         </button>
 
         {/* Agente — alinhado à direita */}
@@ -1606,44 +1607,35 @@ export default function ChatPanel() {
       </div>
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] flex-shrink-0">
+        {/* Avatar */}
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
           {selectedLead.avatar}
         </div>
+        {/* Nome + telefone — sempre visíveis */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{selectedLead.name}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-xs text-[var(--text-muted)] font-mono truncate">{selectedLead.phone}</p>
-            {assigneeName && (
-              <>
-                <span className="text-[var(--border)]">·</span>
-                <div className="flex items-center gap-1">
-                  <div className="w-3.5 h-3.5 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold" style={{ fontSize: '7px' }}>
-                    {assigneeName.slice(0, 1)}
-                  </div>
-                  <span className="text-xs text-[var(--text-muted)] truncate">{assigneeName.split(' ')[0]}</span>
-                </div>
-              </>
-            )}
-          </div>
+          <p className="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">{selectedLead.name}</p>
+          <p className="font-mono text-[var(--text-muted)] truncate leading-tight" style={{ fontSize: '11px' }}>
+            {selectedLead.phone}
+          </p>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
-            style={{ backgroundColor: isLive ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)', color: isLive ? '#10b981' : '#6b7280' }}>
-            {isLive ? <><Wifi size={10} /><span>Live</span></> : <><WifiOff size={10} /><span>Off</span></>}
-          </div>
-          {/* Finalizar Conversa — ao lado do X */}
-          <button
-            onClick={handleFinalize}
-            title="Finalizar conversa — sai do Kanban. Se cliente responder, volta para Leads."
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
-            style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}>
-            <Check size={11} /> Finalizar
+        {/* Ações: Live + Finalizar + X — compactos */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full"
+            style={{ backgroundColor: isLive ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)',
+              color: isLive ? '#10b981' : '#6b7280', fontSize: '10px' }}>
+            {isLive ? <><Wifi size={9} /> Live</> : <><WifiOff size={9} /> Off</>}
+          </span>
+          <button onClick={handleFinalize}
+            title="Finalizar conversa"
+            className="flex items-center gap-0.5 px-2 py-1 rounded-lg font-semibold transition-all hover:opacity-80 active:scale-95"
+            style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e',
+              border: '1px solid rgba(34,197,94,0.25)', fontSize: '11px' }}>
+            <Check size={10} /> Finalizar
           </button>
           <button onClick={() => setSelectedLead(null)}
-            title="Fechar conversa"
-            className="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-400 text-[var(--text-muted)] transition-all">
-            <X size={15} />
+            className="p-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 text-[var(--text-muted)] transition-all">
+            <X size={14} />
           </button>
         </div>
       </div>
