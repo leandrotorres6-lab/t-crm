@@ -520,13 +520,19 @@ app.get('/api/pagamentos', async (req, res) => {
   try {
     if (db.DB_READY()) {
       const all = await db.getAll()
-      const pagamentos = all.filter(c => c.column === 'aguardando_pagamento')
+      // Lista todos com paymentDueDate preenchido, independente de coluna
+      const pagamentos = all.filter(c => c.paymentDueDate)
       return res.json(pagamentos)
     }
+    // Fallback: store em memória
     const cached = store.getCache()
     const all = cached ? Object.values(cached) : await getAllConversations()
-    const pagamentos = all.filter(c => c.column === 'aguardando_pagamento')
-      .map(c => ({ ...c, paymentDueDate: store.getMeta(c.id).paymentDueDate || null, observacao: store.getMeta(c.id).observacao || '' }))
+    const pagamentos = all
+      .map(c => {
+        const meta = store.getMeta(c.id)
+        return { ...c, paymentDueDate: meta.paymentDueDate || c.paymentDueDate || null, observacao: meta.observacao || c.observacao || '' }
+      })
+      .filter(c => c.paymentDueDate)
     res.json(pagamentos)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

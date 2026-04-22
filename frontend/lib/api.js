@@ -72,6 +72,7 @@ export const api = {
 
   getScheduled: (agentId, role) => fetchJSON(`/agendamentos${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),
   getPayments: (from, to) => fetchJSON(`/pagamentos${from ? `?from=${from}&to=${to}` : ''}`),
+  getPagamentos: () => fetchJSON('/pagamentos'),
   updatePaymentDate: (id, date) => fetchJSON(`/kanban/${id}/payment`, { method: 'PATCH', body: JSON.stringify({ paymentDueDate: date }) }),
 
   getInbox: (agentId, role) => fetchJSON(`/inbox${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),

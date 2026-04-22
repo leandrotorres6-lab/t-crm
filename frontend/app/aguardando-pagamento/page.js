@@ -125,7 +125,9 @@ export default function AguardandoPagamentoPage() {
   useEffect(() => { load() }, [])
 
   const filtered = all.filter(lead => {
-    if (!lead.paymentDueDate) return filter === 'todos'
+    // Backend já garante que todos têm paymentDueDate — mas por segurança
+    if (!lead.paymentDueDate) return false
+    if (filter === 'todos') return true
     const d = new Date(lead.paymentDueDate)
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
