@@ -1613,16 +1613,9 @@ export default function ChatPanel() {
         <>
       {/* ── Mensagens ── */}
       <div ref={scrollRef}
-        onScroll={() => { if (scrollRef.current?.scrollTop < 60) loadOlder() }}
+        onScroll={() => {}}
         className="flex-1 overflow-y-auto px-4 py-3">
-        {loadingMore && (
-          <div className="flex justify-center mb-3">
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] px-3 py-1.5 rounded-full"
-              style={{ backgroundColor: 'var(--bg-hover)' }}>
-              <Loader2 size={12} className="animate-spin" /> Carregando...
-            </div>
-          </div>
-        )}
+
         {loadingInit
           ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[var(--text-muted)]" /></div>
           : groupByDate(messages).map((item, i) => {
