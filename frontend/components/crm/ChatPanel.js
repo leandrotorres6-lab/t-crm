@@ -1,4 +1,5 @@
 'use client'
+// emoji-picker-react carregado dinamicamente para não pesar o bundle
 import React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../../contexts/AppContext'
@@ -519,13 +520,7 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
           )}
         </button>
 
-        {/* Finalizar Conversa — equivalente ao "Resolver" do Chatwoot */}
-        <button onClick={onResolve}
-          title="Finalizar conversa — sai do Kanban, volta se cliente responder"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 ml-auto"
-          style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
-          <Check size={12} /> Finalizar
-        </button>
+
       </div>
 
       {/* Modal de seleção de etapa */}
@@ -1273,6 +1268,16 @@ export default function ChatPanel() {
   const [loadingInit, setLoadingInit] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState([])  // múltiplos arquivos
+  const [EmojiPicker, setEmojiPicker] = useState(null)
+
+  // Carrega emoji picker só quando necessário
+  useEffect(() => {
+    if (showEmoji && !EmojiPicker) {
+      import('emoji-picker-react').then(mod => setEmojiPicker(() => mod.default))
+    }
+  }, [showEmoji])
   const [isLive, setIsLive] = useState(false)
   const [moveToast, setMoveToast] = useState(null)
   const [activeTab, setActiveTab] = useState('chat')  // 'chat' | 'notas'
@@ -1402,6 +1407,18 @@ export default function ChatPanel() {
   }, [selectedLead, messages, hasMore, loadingMore])
 
   // ── Mover coluna ──────────────────────────────────────────────────────────
+  // Finalizar conversa — remove do kanban, volta para leads se cliente responder
+  const handleFinalize = useCallback(async () => {
+    if (!selectedLead) return
+    if (!confirm(`Finalizar conversa com "${selectedLead.name}"?\n\nSai do Kanban. Se o cliente responder, volta para Leads.`)) return
+    try {
+      await api.finalizeLead(selectedLead.id)
+      setMoveToast({ text: '✓ Conversa finalizada', color: '#22c55e' })
+      setTimeout(() => setMoveToast(null), 2500)
+      setSelectedLead(null)
+    } catch (e) { console.error('Finalize failed:', e) }
+  }, [selectedLead, setSelectedLead])
+
   // handleMove é chamado tanto pelo ColumnMover quanto pelas etiquetas na conversa
   // Para 'agendado' e 'aguardando_pagamento' abre o modal antes de mover
   const handleMove = useCallback(async (column) => {
@@ -1444,6 +1461,9 @@ export default function ChatPanel() {
   }, [selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove])
 
   // ── Enviar texto ──────────────────────────────────────────────────────────
+  // Fecha emoji picker ao clicar fora
+  const handleCloseEmoji = () => setShowEmoji(false)
+
   const handleSend = async () => {
     if (!input.trim() || !selectedLead || sending) return
     const content = input.trim(); setInput(''); setSending(true)
@@ -1468,30 +1488,35 @@ export default function ChatPanel() {
   // ── Enviar arquivo (imagem/documento) ─────────────────────────────────────
   // Seleciona arquivo → mostra preview com X para cancelar antes de enviar
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files || [])
     e.target.value = ''
-    if (!file || !selectedLead) return
-    const isImage = file.type.startsWith('image/')
-    const fileType = isImage ? 'image' : 'file'
-    const url = isImage ? URL.createObjectURL(file) : null
-    setPendingFile({ file, url, fileType })
+    if (!files.length || !selectedLead) return
+    // Múltiplos arquivos: envia em fila
+    setPendingFiles(files.map(file => {
+      const isImage = file.type.startsWith('image/')
+      return { file, url: isImage ? URL.createObjectURL(file) : null, fileType: isImage ? 'image' : 'file' }
+    }))
   }
 
-  // Confirma e envia o arquivo após preview
+  // Confirma e envia arquivo(s) após preview
   const handleSendFile = async () => {
-    if (!pendingFile || !selectedLead) return
-    const { file, url, fileType } = pendingFile
+    // Suporte a múltiplos via pendingFiles
+    const filesToSend = pendingFiles.length > 0 ? pendingFiles : (pendingFile ? [pendingFile] : [])
+    if (!filesToSend.length || !selectedLead) return
+    setPendingFiles([])
     setPendingFile(null)
-    const opt = {
-      id: `opt-${Date.now()}`, sender: 'agent', content: '', timestamp: new Date().toISOString(),
-      attachments: [{ id: 'opt', fileType, url: url || '', filename: file.name, fileSize: file.size }]
+    for (const { file, url, fileType } of filesToSend) {
+      const opt = {
+        id: `opt-${Date.now()}-${file.name}`, sender: 'agent', content: '', timestamp: new Date().toISOString(),
+        attachments: [{ id: 'opt', fileType, url: url || '', filename: file.name, fileSize: file.size }]
+      }
+      setMessages(prev => [...prev, opt])
+      try {
+        const fd = new FormData(); fd.append('file', file)
+        await api.sendAttachment(selectedLead.id, fd)
+      } catch (e) { console.error(e) }
     }
-    setMessages(prev => [...prev, opt])
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-    try {
-      const fd = new FormData(); fd.append('file', file)
-      await api.sendAttachment(selectedLead.id, fd)
-    } catch (e) { console.error(e) }
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }
 
   // ── Áudio: parou de gravar → preview ──────────────────────────────────────
@@ -1617,6 +1642,14 @@ export default function ChatPanel() {
             style={{ backgroundColor: isLive ? 'rgba(16,185,129,0.1)' : 'rgba(107,114,128,0.1)', color: isLive ? '#10b981' : '#6b7280' }}>
             {isLive ? <><Wifi size={10} /><span>Live</span></> : <><WifiOff size={10} /><span>Off</span></>}
           </div>
+          {/* Finalizar Conversa — ao lado do X */}
+          <button
+            onClick={handleFinalize}
+            title="Finalizar conversa — sai do Kanban. Se cliente responder, volta para Leads."
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+            style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}>
+            <Check size={11} /> Finalizar
+          </button>
           <button onClick={() => setSelectedLead(null)}
             title="Fechar conversa"
             className="p-2 rounded-lg hover:bg-red-500/10 hover:text-red-400 text-[var(--text-muted)] transition-all">
@@ -1736,8 +1769,32 @@ export default function ChatPanel() {
           />
         )}
 
+        {/* Preview de múltiplos arquivos */}
+        {!recordingMode && pendingFiles.length > 0 && (
+          <div className="px-4 py-3 border-t border-[var(--border)]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">{pendingFiles.length} arquivo{pendingFiles.length > 1 ? 's' : ''} selecionado{pendingFiles.length > 1 ? 's' : ''}</span>
+              <button onClick={() => setPendingFiles([])} className="text-xs text-[var(--text-muted)] hover:text-red-400">Cancelar</button>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {pendingFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+                  style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+                  {f.fileType === 'image' ? '🖼' : '📄'} {f.file.name.slice(0, 20)}{f.file.name.length > 20 ? '…' : ''}
+                  <button onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))} className="hover:text-red-400 ml-1">×</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleSendFile}
+              className="w-full py-2 rounded-xl text-sm font-semibold text-white transition-all"
+              style={{ backgroundColor: '#2563eb' }}>
+              Enviar {pendingFiles.length} arquivo{pendingFiles.length > 1 ? 's' : ''}
+            </button>
+          </div>
+        )}
+
         {/* Preview de imagem ou arquivo (com X para cancelar) */}
-        {!recordingMode && pendingFile && (
+        {!recordingMode && pendingFile && pendingFiles.length === 0 && (
           <FilePreview
             pending={pendingFile}
             onSend={handleSendFile}
@@ -1750,7 +1807,7 @@ export default function ChatPanel() {
         )}
 
         {/* Input de texto normal */}
-        {!recordingMode && !audioBlob && !pendingFile && (
+        {!recordingMode && !audioBlob && !pendingFile && pendingFiles.length === 0 && (
           <>
             {/* Toolbar */}
             <div className="flex items-center gap-1 mb-2 relative">
@@ -1770,8 +1827,8 @@ export default function ChatPanel() {
                 style={{ color: showTemplates ? '#60a5fa' : 'var(--text-muted)' }}>
                 <Layout size={16} />
               </button>
-              <input ref={imageInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
-              <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" className="hidden" onChange={handleFileChange} />
+              <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.png,.jpg,.jpeg,.gif,.mp4,.mov" multiple className="hidden" onChange={handleFileChange} />
               {/* Templates dropdown */}
               {showTemplates && templates.length > 0 && (
                 <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl shadow-2xl z-50 overflow-hidden"
@@ -1885,9 +1942,29 @@ export default function ChatPanel() {
             {/* Textarea + mic + send */}
             <div className="flex items-end gap-2 rounded-xl p-2"
               style={{ backgroundColor: 'var(--bg-card)', border: `1px solid ${slashMenu.open ? 'rgba(59,130,246,0.5)' : 'var(--border)'}` }}>
-              <button className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors flex-shrink-0">
-                <Smile size={16} />
-              </button>
+              <div className="relative flex-shrink-0">
+                <button onClick={() => setShowEmoji(o => !o)}
+                  className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] transition-colors"
+                  style={showEmoji ? { backgroundColor: 'var(--bg-hover)', color: 'var(--text-primary)' } : {}}>
+                  <Smile size={16} />
+                </button>
+                {showEmoji && (
+                  <div className="absolute bottom-10 left-0 z-50" onClick={e => e.stopPropagation()}>
+                    <EmojiPicker
+                      theme="dark"
+                      skinTonesDisabled
+                      searchDisabled={false}
+                      height={350}
+                      width={300}
+                      onEmojiClick={(emojiData) => {
+                        setInput(prev => prev + emojiData.emoji)
+                        setShowEmoji(false)
+                        textareaRef.current?.focus()
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
               <textarea ref={textareaRef}
                 onPaste={e => {
                   // Detecta imagem/arquivo colado (Ctrl+V)
