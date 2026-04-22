@@ -50,6 +50,9 @@ export const api = {
   getColumnLeads: (col, page = 1, agentId, role) =>
     fetchJSON(`/kanban/${col}?page=${page}&limit=15${agentId ? `&agentId=${agentId}` : ''}${role ? `&role=${role}` : ''}`),
   moveLead: (id, column, fromColumn) => fetchJSON(`/kanban/${id}/move`, { method: 'PATCH', body: JSON.stringify({ column, fromColumn }) }),
+  setPaymentDue: (id, paymentDueDate, observacao) => fetchJSON(`/kanban/${id}/payment`, { method: 'PATCH', body: JSON.stringify({ paymentDueDate, observacao }) }),
+  setScheduledAt: (id, scheduledAt, observacao) => fetchJSON(`/kanban/${id}/schedule`, { method: 'PATCH', body: JSON.stringify({ scheduledAt, observacao }) }),
+  finalizeLead: (id) => fetchJSON(`/kanban/${id}/finalize`, { method: 'POST' }),
   scheduleLead: (id, scheduledAt, observacao) => fetchJSON(`/kanban/${id}/schedule`, { method: 'PATCH', body: JSON.stringify({ scheduledAt, observacao }) }),
 
   getMessages: (leadId, before) => fetchJSON(`/messages/${leadId}${before ? `?before=${before}` : ''}`),

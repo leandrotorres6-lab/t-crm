@@ -292,7 +292,6 @@ function ColumnMover({ currentColumn, onMove }) {
           {ALL_COLUMNS.map(col => (
             <button key={col.id} onClick={async () => {
                 setOpen(false)
-                // Só mostra loading para colunas que não abrem modal
                 const needsModal = col.id === 'agendado' || col.id === 'aguardando_pagamento'
                 if (!needsModal) setMoving(true)
                 await onMove(col.id)
@@ -304,6 +303,18 @@ function ColumnMover({ currentColumn, onMove }) {
               {col.id === currentColumn && <Check size={13} style={{ color: col.color }} />}
             </button>
           ))}
+          {/* Divider + Finalizar Cliente */}
+          <div className="border-t border-[var(--border)]" />
+          <button onClick={async () => {
+              setOpen(false)
+              setMoving(true)
+              await onMove('finalizado')
+              setMoving(false)
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-red-500/10 transition-colors text-left">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-sm flex-1 text-red-400 font-semibold">Finalizar Cliente</span>
+          </button>
         </div>
       )}
     </div>
@@ -1312,7 +1323,24 @@ export default function ChatPanel() {
 
   useSocket('new_message', ({ conversationId, message }) => {
     if (!selectedLead || String(conversationId) !== String(selectedLead.id)) return
-    setMessages(prev => prev.find(m => m.id === message.id) ? prev : [...prev, message])
+    setMessages(prev => {
+      // Dedup por id exato
+      if (prev.find(m => m.id === message.id)) return prev
+      // Dedup por optimistic: se agente enviou e tem msg optimistic com mesmo conteúdo, substitui
+      if (message.sender === 'agent') {
+        const optIdx = prev.findIndex(m =>
+          String(m.id).startsWith('opt-') &&
+          m.sender === 'agent' &&
+          m.content === message.content
+        )
+        if (optIdx !== -1) {
+          const next = [...prev]
+          next[optIdx] = message
+          return next
+        }
+      }
+      return [...prev, message]
+    })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
   })
 
@@ -1377,6 +1405,16 @@ export default function ChatPanel() {
     }
     if (column === 'aguardando_pagamento') {
       setPaymentModal({ lead: selectedLead })
+      return
+    }
+    if (column === 'finalizado') {
+      if (!confirm(`Finalizar cliente "${selectedLead.name}"? Ele sairá do Kanban mas permanecerá em Conversas e Agenda.`)) return
+      try {
+        await api.finalizeLead(selectedLead.id)
+        setMoveToast({ text: `✓ Cliente finalizado`, color: '#ef4444' })
+        setTimeout(() => setMoveToast(null), 2500)
+        setSelectedLead(null)  // fecha o chat
+      } catch (e) { console.error('Finalize failed:', e) }
       return
     }
 

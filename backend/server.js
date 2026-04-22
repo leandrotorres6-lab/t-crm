@@ -465,6 +465,22 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Finalizar cliente — remove de todos os kanbans, mantém em Conversas/Agenda
+app.post('/api/kanban/:id/finalize', async (req, res) => {
+  try {
+    const { id } = req.params
+    store.setColumn(id, 'finalizado')
+    store.invalidateCache()
+    if (CHATWOOT_READY) cw.setKanbanLabel(id, 'finalizado').catch(e => console.warn(e.message))
+    if (db.DB_READY()) {
+      db.moveColumn(id, 'finalizado').catch(() => {})
+    }
+    io.emit('lead_moved', { id, column: 'finalizado' })
+    console.log(`[Finalize] Lead ${id} finalizado`)
+    res.json({ id, column: 'finalizado' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Lista de agendamentos (para alarme no frontend)
 app.get('/api/agendamentos', async (req, res) => {
   try {
