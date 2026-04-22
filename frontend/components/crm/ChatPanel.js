@@ -1326,8 +1326,8 @@ export default function ChatPanel() {
     setActiveTab('chat')
     setNotes([])
     setContactTyping(false)
-    // Marca como lida ao abrir — zera badge no backend E no estado local
-    api.markAsRead(selectedLead.id).catch(() => {})
+    // markAsRead já tratado pelo setSelectedLead no AppContext
+    // Garante zerar localmente por segurança
     const lid = String(selectedLead.id)
     setUnreadCounts(prev => ({ ...prev, [lid]: 0 }))
     if (unreadUpdatedAt?.current) unreadUpdatedAt.current[lid] = new Date().toISOString()
@@ -1403,6 +1403,16 @@ export default function ChatPanel() {
     const opt = { id: `opt-${Date.now()}`, sender: 'agent', content, timestamp: new Date().toISOString(), attachments: [] }
     setMessages(prev => [...prev, opt])
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+
+    // Optimistic: ao responder um lead não atendido → move para negociação
+    const col = currentColumn || selectedLead.column
+    if (col === 'leads') {
+      applyPendingMove(selectedLead, 'negociacao')
+      setCurrentColumn('negociacao')
+      setSelectedLead({ ...selectedLead, column: 'negociacao' })
+      api.moveLead(selectedLead.id, 'negociacao').catch(() => {})
+    }
+
     try { await api.sendMessage(selectedLead.id, content) }
     catch (e) { console.error(e) }
     finally { setSending(false) }
@@ -1575,7 +1585,17 @@ export default function ChatPanel() {
         currentColumn={currentColumn || selectedLead.column}
         product={selectedLead.product}
         assigneeName={assigneeName}
-        onAssigned={agent => setAssigneeName(agent.name)}
+        onAssigned={agent => {
+          setAssigneeName(agent.name)
+          // Optimistic: ao atribuir agente em 'leads', move para 'negociacao'
+          const col = currentColumn || selectedLead?.column
+          if (col === 'leads' && selectedLead) {
+            applyPendingMove(selectedLead, 'negociacao')
+            setCurrentColumn('negociacao')
+            setSelectedLead({ ...selectedLead, column: 'negociacao', assigneeName: agent.name })
+            api.moveLead(selectedLead.id, 'negociacao').catch(() => {})
+          }
+        }}
         onMove={handleMove}
       />
 

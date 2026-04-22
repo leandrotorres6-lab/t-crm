@@ -234,10 +234,20 @@ export function AppProvider({ children }) {
     setSelectedLeadRaw(lead)
     if (!lead) return
     const id = String(lead.id)
-    // Optimistic update — zera imediatamente no estado local
+    const ts = new Date().toISOString()
+
+    // 1. Zera contador no estado global imediatamente
     setUnreadCounts(prev => ({ ...prev, [id]: 0 }))
-    if (unreadUpdatedAt?.current) unreadUpdatedAt.current[id] = new Date().toISOString()
-    // Persiste no backend com auth token
+
+    // 2. Registra timestamp para bloquear updates antigos
+    if (unreadUpdatedAt?.current) unreadUpdatedAt.current[id] = ts
+
+    // 3. Dispara evento DOM para KanbanColumn e Conversas zerarem o card local
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
+    }
+
+    // 4. Persiste no backend (Supabase + Chatwoot)
     import('../lib/api').then(({ api }) => api.markAsRead(id)).catch(() => {})
   }, [])
 
