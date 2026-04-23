@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { showNotification, playSound } from '../../lib/notifications'
 import { api } from '../../lib/api'
 import { useApp } from '../../contexts/AppContext'
 import { Bell, Phone, MessageCircle, X, ChevronRight, Clock } from 'lucide-react'
@@ -55,29 +56,18 @@ export default function NotificationAlarm() {
 
       setAlarms(prev => [...prev, ...due])
 
-      // Notificação do sistema operacional
-      if (typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'granted') {
-          due.forEach(lead => {
-            new Notification(`🔔 Contato agora: ${lead.name}`, {
-              body: lead.observacao || `Tel: ${lead.phone}`,
-              icon: '/favicon.ico',
-              requireInteraction: true, // não fecha automaticamente
-            })
-          })
-        } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission()
-        }
-      }
+      // Som + notificação do sistema para cada alarme
+      playSound('alarm')
+      due.forEach(lead => {
+        showNotification(`🔔 Contato agora: ${lead.name}`, lead.observacao || `Tel: ${lead.phone}`, {
+          requireInteraction: true,
+          tag: `alarm-${lead.id}`,
+        })
+      })
     }
   }, [])
 
   useEffect(() => {
-    // Pede permissão de notificação logo ao montar
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
-
     loadAgendados()
 
     // Verifica a cada 15 segundos (janela de 30s garante que não perde)

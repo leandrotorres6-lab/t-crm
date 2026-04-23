@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
+import { showNotification, playSound } from '../../lib/notifications'
 import MainLayout from '../../components/layout/MainLayout'
 import { api } from '../../lib/api'
 import { useApp } from '../../contexts/AppContext'
@@ -117,7 +118,25 @@ export default function AguardandoPagamentoPage() {
     setLoading(true)
     try {
       const data = await api.getPagamentos()
-      setAll(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      setAll(list)
+      // Notifica pagamentos que vencem hoje
+      const today = new Date()
+      today.setHours(0,0,0,0)
+      const endToday = new Date(today.getTime() + 86400000)
+      const dueToday = list.filter(l => {
+        if (!l.paymentDueDate) return false
+        const d = new Date(l.paymentDueDate)
+        return d >= today && d < endToday
+      })
+      if (dueToday.length > 0) {
+        playSound('alarm')
+        showNotification(
+          `💰 ${dueToday.length} pagamento${dueToday.length > 1 ? 's' : ''} vence${dueToday.length > 1 ? 'm' : ''} hoje`,
+          dueToday.map(l => l.name).slice(0, 3).join(', '),
+          { tag: 'payment-due-today', requireInteraction: false }
+        )
+      }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [])

@@ -1,4 +1,5 @@
 'use client'
+import { showNotification, playSound, requestNotificationPermission } from '../lib/notifications'
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { setAuthToken, clearAuthToken } from '../lib/api'
 import { useSocket } from '../lib/socket'
@@ -125,8 +126,9 @@ export function AppProvider({ children }) {
       }))
       // Força KanbanColumn de leads a recarregar do backend
       window.dispatchEvent(new CustomEvent('tcrm:reload-column', { detail: { column: 'leads' } }))
-      // Som de notificação
-      window.dispatchEvent(new CustomEvent('tcrm:play-sound', { detail: { type: 'new_lead' } }))
+      // Som + popup
+      playSound('lead')
+      showNotification('🆕 Novo lead', lead.name || 'Novo contato', { tag: `lead-${lead.id}` })
     }
   })
 
@@ -160,36 +162,21 @@ export function AppProvider({ children }) {
         setUnreadCounts(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
       }
 
-      // Som (Web Audio API — sem arquivo externo)
-      try {
-        if (typeof window !== 'undefined') {
-          const ctx = new (window.AudioContext || window.webkitAudioContext)()
-          const osc = ctx.createOscillator()
-          const gain = ctx.createGain()
-          osc.connect(gain); gain.connect(ctx.destination)
-          osc.frequency.setValueAtTime(880, ctx.currentTime)
-          osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1)
-          gain.gain.setValueAtTime(0.12, ctx.currentTime)
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-          osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3)
-        }
-      } catch {}
-
-      // Toast visual in-app
       const senderName = sn || message?.senderName || 'Cliente'
+
+      // Som + popup nativo + toast — via utilitário centralizado
+      playSound('message')
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tcrm:toast', {
           detail: { text: `💬 ${senderName}: ${text.slice(0, 60)}${text.length > 60 ? '...' : ''}`, conversationId: id }
         }))
       }
 
-      // Notificação browser
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-        try {
-          const n = new Notification(`💬 ${senderName}`, { body: text.slice(0, 100), icon: '/icon-192.png', tag: `msg-${id}`, renotify: true })
-          n.onclick = () => { window.focus(); n.close() }
-        } catch {}
-      }
+      showNotification(`💬 ${senderName}`, text.slice(0, 100), {
+        tag: `msg-${id}`,
+        renotify: true,
+      })
     }
 
     // Evento global para colunas e listas
