@@ -370,21 +370,12 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const handleAssign = useCallback(async (lead, agent) => {
     try {
       await api.assignAgent(lead.id, agent.id)
-      if (currentAgent?.role === 'supervisor') {
-        // Supervisor vê todos — apenas atualiza o nome do vendedor no card
-        setLeads(prev => prev.map(l =>
-          l.id === lead.id
-            ? { ...l, assignedTo: String(agent.id), assigneeName: agent.name }
-            : l
-        ))
-      } else {
-        // Vendedor só vê os seus — card some pois foi atribuído a outro
-        setLeads(prev => prev.filter(l => l.id !== lead.id))
-        setTotal(prev => Math.max(0, prev - 1))
-      }
+      // Remove da coluna atual — o card vai aparecer na coluna do novo vendedor
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setTotal(prev => Math.max(0, prev - 1))
       kanbanCache.invalidate(columnId)
     } catch (e) { console.error(e) }
-  }, [columnId, currentAgent?.role])
+  }, [columnId])
 
   const handleMove = useCallback(async (lead, col) => {
     try {
