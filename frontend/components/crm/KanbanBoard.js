@@ -145,13 +145,26 @@ export default function KanbanBoard() {
   })
 
   useSocket('lead_moved', ({ id, column, fromColumn }) => {
+    console.log('📥 lead_moved recebido:', { id, column, fromColumn })
+
+    // Atualiza contadores imediatamente
     setColumnCounts(prev => ({
       ...prev,
       ...(fromColumn ? { [fromColumn]: Math.max(0, (prev[fromColumn] || 1) - 1) } : {}),
       [column]: (prev[column] || 0) + 1,
     }))
-    if (fromColumn) refreshCol(fromColumn)
-    refreshCol(column)
+
+    // Move o card nas colunas via evento global — sem reload, sem delay
+    // KanbanColumn escuta tcrm:lead-moved e atualiza setLeads atomicamente
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+        detail: { leadId: String(id), fromCol: fromColumn, toCol: column }
+      }))
+    }
+
+    // Invalida cache para garantir consistência se o usuário rolar para carregar mais
+    if (fromColumn) kanbanCache.invalidate(fromColumn)
+    kanbanCache.invalidate(column)
   })
 
   // Auto-scroll desktop ao arrastar

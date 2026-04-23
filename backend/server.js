@@ -462,6 +462,7 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
       CHATWOOT_READY ? cw.setKanbanLabel(id, column).catch(e => console.warn('Label update failed:', e.message)) : Promise.resolve(),
     ]).catch(() => {})
 
+    console.log(`📡 emit lead_moved: conv=${id} ${fromColumn || '?'} → ${column}`)
     io.emit('lead_moved', { id, column, fromColumn })
     res.json({ id, column })
   } catch (e) { res.status(500).json({ error: e.message }) }

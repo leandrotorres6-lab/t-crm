@@ -237,7 +237,7 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => obs.disconnect()
   }, [hasMore, page, loadLeads])
 
-  // Eventos globais de movimento — remove da origem, dedup na chegada
+  // Eventos globais de movimento — remoção atômica da origem + inserção no destino
   useEffect(() => {
     const handler = ({ detail: { leadId, fromCol, toCol } }) => {
       if (fromCol === columnId) {
@@ -249,10 +249,23 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           return prev.filter(l => String(l.id) !== String(leadId))
         })
       }
+      // Se este card foi movido PARA esta coluna por OUTRO usuário
+      // (o usuário atual não tem o card em leads pois não fez drag)
+      // Precisamos buscá-lo e inserir — mas só se não existe
+      if (toCol === columnId && fromCol !== columnId) {
+        setLeads(prev => {
+          const exists = prev.some(l => String(l.id) === String(leadId))
+          if (exists) return prev  // já está aqui, não duplicar
+          // Card veio de outra coluna para cá via socket de outro usuário
+          // Dispara reload silencioso para buscar o card do backend
+          setTimeout(() => loadLeads(1, true), 100)
+          return prev
+        })
+      }
     }
     window.addEventListener('tcrm:lead-moved', handler)
     return () => window.removeEventListener('tcrm:lead-moved', handler)
-  }, [columnId])
+  }, [columnId, loadLeads])
 
   // Conversa resolvida — remove de qualquer coluna
   useEffect(() => {
