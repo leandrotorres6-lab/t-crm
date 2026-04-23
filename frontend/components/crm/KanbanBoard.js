@@ -144,9 +144,7 @@ export default function KanbanBoard() {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000)
   })
 
-  useSocket('lead_moved', ({ id, column, fromColumn }) => {
-    console.log('📥 lead_moved recebido:', { id, column, fromColumn })
-
+  useSocket('lead_moved', ({ id, column, fromColumn, lead }) => {
     // Atualiza contadores imediatamente
     setColumnCounts(prev => ({
       ...prev,
@@ -154,15 +152,14 @@ export default function KanbanBoard() {
       [column]: (prev[column] || 0) + 1,
     }))
 
-    // Move o card nas colunas via evento global — sem reload, sem delay
-    // KanbanColumn escuta tcrm:lead-moved e atualiza setLeads atomicamente
+    // Propaga para KanbanColumns com lead completo — atualização atômica sem fetch
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
-        detail: { leadId: String(id), fromCol: fromColumn, toCol: column }
+        detail: { leadId: String(id), fromCol: fromColumn, toCol: column, leadData: lead || null }
       }))
     }
 
-    // Invalida cache para garantir consistência se o usuário rolar para carregar mais
+    // Invalida cache para próximo scroll/load
     if (fromColumn) kanbanCache.invalidate(fromColumn)
     kanbanCache.invalidate(column)
   })

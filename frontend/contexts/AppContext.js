@@ -213,10 +213,11 @@ export function AppProvider({ children }) {
     return () => navigator.serviceWorker.removeEventListener('message', handler)
   }, [])
 
-  useSocket('lead_moved', ({ id, column, fromColumn }) => {
+  useSocket('lead_moved', ({ id, column, fromColumn, lead }) => {
     const leadId = String(id)
+    console.log('📥 lead_moved recebido:', { id: leadId, column, fromColumn, hasLead: !!lead })
 
-    // Recupera fromCol do pendingMoves se o socket não trouxer (evita card fantasma)
+    // Recupera fromCol do pendingMoves se o socket não trouxer
     const pendingFrom = pendingMoves[leadId]?.fromCol
     const resolvedFrom = fromColumn || pendingFrom
 
@@ -228,11 +229,15 @@ export function AppProvider({ children }) {
       return prev
     })
 
-    // Sempre despacha tcrm:lead-moved para garantir remoção do fromCol
-    // mesmo quando fromColumn não vem no payload do socket
-    if (typeof window !== 'undefined' && resolvedFrom && resolvedFrom !== column) {
+    // Despacha tcrm:lead-moved com o lead completo para atualização atômica nas colunas
+    if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
-        detail: { leadId, fromCol: resolvedFrom, toCol: column }
+        detail: {
+          leadId,
+          fromCol: resolvedFrom,
+          toCol: column,
+          leadData: lead || null,  // lead completo para inserção sem fetch
+        }
       }))
     }
   })

@@ -462,8 +462,18 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
       CHATWOOT_READY ? cw.setKanbanLabel(id, column).catch(e => console.warn('Label update failed:', e.message)) : Promise.resolve(),
     ]).catch(() => {})
 
-    console.log(`📡 emit lead_moved: conv=${id} ${fromColumn || '?'} → ${column}`)
-    io.emit('lead_moved', { id, column, fromColumn })
+    // Busca lead completo para enviar no evento (cache primeiro, sem latência extra)
+    let leadData = null
+    const cached = store.getCache()
+    if (cached && cached[String(id)]) {
+      leadData = { ...cached[String(id)], column }
+    } else if (db.DB_READY()) {
+      leadData = await db.getLeadById(id).catch(() => null)
+      if (leadData) leadData = { ...leadData, column }
+    }
+
+    console.log(`📡 emit lead_moved: conv=${id} ${fromColumn || '?'} → ${column} (lead: ${leadData ? 'completo' : 'parcial'})`)
+    io.emit('lead_moved', { id, column, fromColumn, lead: leadData })
     res.json({ id, column })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

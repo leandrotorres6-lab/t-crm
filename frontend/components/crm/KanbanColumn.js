@@ -237,28 +237,36 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => obs.disconnect()
   }, [hasMore, page, loadLeads])
 
-  // Eventos globais de movimento — remoção atômica da origem + inserção no destino
+  // Eventos globais de movimento — 100% atômico, sem fetch, sem delay
   useEffect(() => {
-    const handler = ({ detail: { leadId, fromCol, toCol } }) => {
+    const handler = ({ detail: { leadId, fromCol, toCol, leadData } }) => {
+      const lid = String(leadId)
+
+      // 1. Remove da coluna de origem
       if (fromCol === columnId) {
-        // Remove da coluna de origem imediatamente
         setLeads(prev => {
-          const exists = prev.some(l => String(l.id) === String(leadId))
+          const exists = prev.some(l => String(l.id) === lid)
           if (!exists) return prev
           setTotal(t => Math.max(0, t - 1))
-          return prev.filter(l => String(l.id) !== String(leadId))
+          return prev.filter(l => String(l.id) !== lid)
         })
       }
-      // Se este card foi movido PARA esta coluna por OUTRO usuário
-      // (o usuário atual não tem o card em leads pois não fez drag)
-      // Precisamos buscá-lo e inserir — mas só se não existe
+
+      // 2. Insere na coluna de destino (outro usuário moveu para cá)
       if (toCol === columnId && fromCol !== columnId) {
         setLeads(prev => {
-          const exists = prev.some(l => String(l.id) === String(leadId))
-          if (exists) return prev  // já está aqui, não duplicar
-          // Card veio de outra coluna para cá via socket de outro usuário
-          // Dispara reload silencioso para buscar o card do backend
-          setTimeout(() => loadLeads(1, true), 100)
+          // Dedup: não inserir se já existe
+          if (prev.some(l => String(l.id) === lid)) return prev
+
+          if (leadData) {
+            // Lead completo veio no evento — inserção instantânea, zero fetch
+            const card = { ...leadData, column: toCol }
+            setTotal(t => t + 1)
+            return [card, ...prev]
+          }
+          // Fallback: lead não veio no evento (compatibilidade) — busca pontual
+          kanbanCache.invalidate(columnId)
+          loadLeads(1, true)
           return prev
         })
       }
