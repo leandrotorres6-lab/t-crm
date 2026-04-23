@@ -103,6 +103,7 @@ async function updateMeta(id, fields) {
   if (fields.scheduledAt !== undefined)    row.scheduled_at      = fields.scheduledAt
   if (fields.paymentDueDate !== undefined) row.payment_due_date  = fields.paymentDueDate
   if (fields.observacao !== undefined)     row.observacao        = fields.observacao
+  if (fields.status !== undefined)         row.status            = fields.status
   row.updated_at = new Date().toISOString()
   const { error } = await supabase.from('leads').update(row).eq('id', String(id))
   if (error) console.error('[DB] updateMeta error:', error.message)

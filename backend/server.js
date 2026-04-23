@@ -230,11 +230,9 @@ async function getAllConversations() {
     // (mas é contabilizado no dashboard)
     if ((conv.labels || []).some(l => l.toLowerCase() === 'cancelado')) return true
 
-    // 5. Conversa com status "resolved" E sem label crm_ (nunca passou pelo kanban)
-    if (conv.status === 'resolved') {
-      const hasKanbanLabel = (conv.labels || []).some(l => l.startsWith('crm_'))
-      if (!hasKanbanLabel) return true
-    }
+    // 5. Conversa com status "resolved" — sempre oculta do Kanban
+    // (inclui finalizadas pelo T-CRM, independente de labels)
+    if (conv.status === 'resolved') return true
 
     return false
   }
@@ -494,16 +492,20 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
 app.post('/api/kanban/:id/finalize', async (req, res) => {
   try {
     const { id } = req.params
-    // Marca como resolved no Chatwoot (fonte de verdade)
+    // Marca como resolved no Chatwoot (fonte de verdade para reload)
     if (CHATWOOT_READY) await cw.resolveConversation(id)
-    // Zera unread no cache local
+    // Persiste status no Supabase (fallback quando Chatwoot não está disponível)
+    if (db.DB_READY()) {
+      db.updateMeta(id, { status: 'resolved' }).catch(() => {})
+      db.resetUnread(id).catch(() => {})
+    }
+    // Limpa cache em memória
     store.resetUnread(id)
     store.invalidateCache()
-    if (db.DB_READY()) db.resetUnread(id).catch(() => {})
-    // Notifica frontend para remover da listagem
+    // Notifica frontend para remover do Kanban imediatamente
     io.emit('conversation_resolved', { id })
     io.emit('unread_update', { conversationId: id, count: 0, updatedAt: new Date().toISOString() })
-    console.log(`[Finalize] Conversa ${id} resolvida`)
+    console.log(`[Finalize] Conversa ${id} resolvida e persistida`)
     res.json({ id, status: 'resolved' })
   } catch (e) {
     console.error('[Finalize]', e.message)
