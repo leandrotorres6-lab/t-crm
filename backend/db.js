@@ -284,6 +284,11 @@ async function savePushSubscription(agentId, subscription) {
   if (error) console.error('[DB] savePushSubscription error:', error.message)
 }
 
+async function deletePushSubscription(agentId) {
+  if (!DB_READY) return
+  await supabase.from('push_subscriptions').delete().eq('agent_id', String(agentId))
+}
+
 async function loadPushSubscriptions() {
   if (!DB_READY) return []
   const { data, error } = await supabase.from('push_subscriptions').select('agent_id, subscription')
@@ -294,4 +299,4 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow, savePushSubscription, loadPushSubscriptions, updateMeta }
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta }
