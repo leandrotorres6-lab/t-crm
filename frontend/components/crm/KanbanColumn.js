@@ -69,33 +69,6 @@ function ContextMenu({ menu, agents, onClose, onMarkUnread, onAssign, onMove, on
         <span className="text-[var(--text-secondary)]">Marcar como não lida</span>
       </button>
 
-      {/* Atribuir vendedor */}
-      <div className="relative">
-        <button onClick={() => { setShowAssign(o => !o); setShowMove(false) }}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-[var(--bg-hover)] text-left transition-colors">
-          <span className="flex items-center gap-2.5">
-            <span>👤</span>
-            <span className="text-[var(--text-secondary)]">Atribuir para</span>
-          </span>
-          <span className="text-[var(--text-muted)]" style={{fontSize:'10px'}}>▶</span>
-        </button>
-        {showAssign && (
-          <div className="absolute left-full top-0 rounded-xl shadow-2xl py-1"
-            style={{ minWidth:'160px', backgroundColor:'var(--bg-card)', border:'1px solid var(--border)' }}>
-            {agents.length === 0 && <p className="px-3 py-2 text-xs text-[var(--text-muted)]">Carregando...</p>}
-            {agents.map(a => (
-              <button key={a.id} onClick={() => { onAssign(menu.lead, a); onClose() }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--bg-hover)] text-left transition-colors">
-                <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0" style={{fontSize:'9px'}}>
-                  {a.name.slice(0,2).toUpperCase()}
-                </div>
-                <span className="text-[var(--text-secondary)]">{a.name.split(' ')[0]}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Mover para coluna */}
       <div className="relative">
         <button onClick={() => { setShowMove(o => !o); setShowAssign(false) }}
