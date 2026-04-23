@@ -370,11 +370,12 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const handleAssign = useCallback(async (lead, agent) => {
     try {
       await api.assignAgent(lead.id, agent.id)
-      // Reload this column
+      // Remove da coluna atual — o card vai aparecer na coluna do novo vendedor
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setTotal(prev => Math.max(0, prev - 1))
       kanbanCache.invalidate(columnId)
-      loadLeads(1, true)
     } catch (e) { console.error(e) }
-  }, [columnId, loadLeads])
+  }, [columnId])
 
   const handleMove = useCallback(async (lead, col) => {
     try {

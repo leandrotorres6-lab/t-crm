@@ -698,10 +698,24 @@ app.post('/api/conversations/:id/assign', async (req, res) => {
   try {
     const { id } = req.params
     const { agentId } = req.body
-    if (CHATWOOT_READY) await cw.assignAgent(id, agentId)
+    // Atualiza Chatwoot
+    let agentName = ''
+    if (CHATWOOT_READY) {
+      const result = await cw.assignAgent(id, agentId)
+      agentName = result?.meta?.assignee?.name || ''
+    }
+    // Persiste no Supabase
+    if (db.DB_READY()) {
+      db.updateMeta(id, {
+        assignedTo: String(agentId),
+        assigneeName: agentName,
+      }).catch(() => {})
+    }
+    // Atualiza store em memória
     store.invalidateCache()
-    io.emit('conversation_updated', { id })
-    res.json({ ok: true, agentId })
+    // Notifica frontend
+    io.emit('conversation_updated', { id, assignedTo: String(agentId), assigneeName: agentName })
+    res.json({ ok: true, agentId, agentName })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
