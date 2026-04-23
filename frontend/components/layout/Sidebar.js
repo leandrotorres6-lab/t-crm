@@ -160,20 +160,31 @@ export default function Sidebar({ mobileOverlay = false }) {
           onClick={() => setSidebarOpen(false)} />
       )}
       <aside
-        style={{ backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
+        style={mobileOverlay ? {
+          // Mobile overlay: sempre dark sólido + glass blur para visual premium
+          background: 'rgba(6, 12, 24, 0.96)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderRight: '1px solid rgba(255,255,255,0.08)',
+        } : {
+          backgroundColor: 'var(--sidebar-bg)',
+          borderRight: '1px solid rgba(255,255,255,0.05)',
+        }}
         data-sidebar
-        className={`${mobileOverlay ? 'w-60' : width} ${mobileClass} flex-shrink-0 flex flex-col transition-all duration-300`}
+        className={`${mobileOverlay ? 'w-64' : width} ${mobileClass} flex-shrink-0 flex flex-col transition-all duration-300`}
       style={{ height: mobileOverlay ? '100dvh' : '100%',
         paddingBottom: mobileOverlay ? 'env(safe-area-inset-bottom, 0px)' : undefined }}
       >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-4 h-16 border-b border-white/5">
+      <div className="flex items-center justify-between px-3 py-4 h-16 border-b border-white/5"
+        style={{ paddingTop: mobileOverlay ? 'max(16px, env(safe-area-inset-top, 16px))' : undefined }}>
         {sidebarOpen && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">T</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg"
+              style={{ boxShadow: '0 0 12px rgba(59,130,246,0.5)' }}>
+              <span className="text-white text-sm font-bold">T</span>
             </div>
-            <span className="text-white font-bold text-base tracking-tight">T-CRM</span>
+            <span className="font-bold tracking-tight" style={{ color: 'white', fontSize: mobileOverlay ? '17px' : '15px' }}>T-CRM</span>
           </div>
         )}
         {!sidebarOpen && (
@@ -210,17 +221,16 @@ export default function Sidebar({ mobileOverlay = false }) {
               key={href}
               href={href}
               title={!sidebarOpen ? label : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group
-                ${active
-                  ? 'text-white'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-                }
-              `}
-              style={active ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#60a5fa' } : {}}
+              onClick={() => mobileOverlay && setSidebarOpen(false)}
+              className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group`}
+              style={active
+                ? { backgroundColor: 'rgba(59,130,246,0.18)', color: '#60a5fa', boxShadow: 'inset 0 0 0 1px rgba(59,130,246,0.2)' }
+                : { color: mobileOverlay ? 'rgba(255,255,255,0.7)' : 'var(--sidebar-text)' }
+              }
             >
               {/* Ícone com badge no canto (sidebar fechada) */}
               <div className="relative flex-shrink-0">
-                <Icon size={18} />
+                <Icon size={mobileOverlay ? 20 : 18} />
                 {badgeKey && !sidebarOpen && globalBadges[badgeKey] > 0 && (
                   <span
                     className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] rounded-full text-white flex items-center justify-center font-bold animate-pulse"
@@ -237,7 +247,7 @@ export default function Sidebar({ mobileOverlay = false }) {
 
               {/* Label (sidebar aberta) */}
               {sidebarOpen && (
-                <span className="text-sm font-medium animate-fade-in truncate flex-1">{label}</span>
+                <span className={`font-medium animate-fade-in truncate flex-1 ${mobileOverlay ? 'text-base' : 'text-sm'}`}>{label}</span>
               )}
 
               {/* Badge inline (sidebar aberta) */}
