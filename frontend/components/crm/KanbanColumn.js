@@ -46,7 +46,14 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const bottomRef = useRef(null)
   const loadingRef = useRef(false)
   const retryRef = useRef(null)
-  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, unreadUpdatedAt } = useApp()
+  const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
+  const [contextMenu, setContextMenu] = useState(null)
+  const [agents, setAgents] = useState([])
+
+  // Carrega agentes uma vez
+  useEffect(() => {
+    api.getAgents().then(list => setAgents((list || []).filter(a => a.role !== 'supervisor'))).catch(() => {})
+  }, [])
 
   const loadLeads = useCallback(async (pageNum = 1, silent = false) => {
     if (loadingRef.current) return
@@ -254,6 +261,36 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const allLeads = [...incomingLeads, ...leads.filter(l => !hiddenIds.has(l.id))]
   const displayTotal = Math.max(0, total + incomingLeads.length - hiddenIds.size)
 
+  // Context menu handlers
+  const handleMarkUnread = useCallback((lead) => {
+    setUnreadCounts(prev => ({ ...prev, [String(lead.id)]: (prev[String(lead.id)] || 0) + 1 }))
+  }, [setUnreadCounts])
+
+  const handleAssign = useCallback(async (lead, agent) => {
+    try {
+      await api.assignAgent(lead.id, agent.id)
+      // Reload this column
+      kanbanCache.invalidate(columnId)
+      loadLeads(1, true)
+    } catch (e) { console.error(e) }
+  }, [columnId, loadLeads])
+
+  const handleMove = useCallback(async (lead, col) => {
+    try {
+      await api.moveLead(lead.id, col, lead.column)
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setTotal(prev => Math.max(0, prev - 1))
+    } catch (e) { console.error(e) }
+  }, [])
+
+  const handleFinalize = useCallback(async (lead) => {
+    try {
+      await api.finalizeLead(lead.id)
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setTotal(prev => Math.max(0, prev - 1))
+    } catch (e) { console.error(e) }
+  }, [])
+
   return (
     <div className="flex flex-col h-full rounded-xl transition-all"
       style={{
@@ -285,9 +322,27 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           </>
         )}
 
+        {/* Context menu */}
+        {contextMenu && (
+          <ContextMenu
+            menu={contextMenu}
+            agents={agents}
+            onClose={() => setContextMenu(null)}
+            onMarkUnread={handleMarkUnread}
+            onAssign={handleAssign}
+            onMove={handleMove}
+            onFinalize={handleFinalize}
+          />
+        )}
+
         {/* Cards */}
         {allLeads.map(lead => (
-          <div key={lead.id} className="kanban-card-wrap">
+          <div key={lead.id} className="kanban-card-wrap"
+            onContextMenu={e => {
+              e.preventDefault()
+              e.stopPropagation()
+              setContextMenu({ x: e.clientX, y: e.clientY, lead })
+            }}>
             <KanbanCard lead={lead} columnId={columnId} />
           </div>
         ))}
