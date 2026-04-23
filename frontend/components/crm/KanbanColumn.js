@@ -335,6 +335,18 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => window.removeEventListener('tcrm:new-message', handler)
   }, [columnId])
 
+  // Força reload quando nova conversa chega na coluna
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail?.column === columnId) {
+        kanbanCache.invalidate(columnId)
+        loadLeads(1, true)
+      }
+    }
+    window.addEventListener('tcrm:reload-column', handler)
+    return () => window.removeEventListener('tcrm:reload-column', handler)
+  }, [columnId, loadLeads])
+
   // Drag
   const handleDragOver = e => { e.preventDefault(); setDragOver(true) }
   const handleDragLeave = e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }
@@ -370,12 +382,20 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const handleAssign = useCallback(async (lead, agent) => {
     try {
       await api.assignAgent(lead.id, agent.id)
-      // Remove da coluna atual — o card vai aparecer na coluna do novo vendedor
-      setLeads(prev => prev.filter(l => l.id !== lead.id))
-      setTotal(prev => Math.max(0, prev - 1))
+      const role = currentAgent?.role
+      if (role === 'supervisor') {
+        // Supervisor vê todos — atualiza assigneeName sem remover o card
+        setLeads(prev => prev.map(l =>
+          l.id === lead.id ? { ...l, assignedTo: String(agent.id), assigneeName: agent.name } : l
+        ))
+      } else {
+        // Vendedor — card vai para outro vendedor, remove do state
+        setLeads(prev => prev.filter(l => l.id !== lead.id))
+        setTotal(prev => Math.max(0, prev - 1))
+      }
       kanbanCache.invalidate(columnId)
     } catch (e) { console.error(e) }
-  }, [columnId])
+  }, [columnId, currentAgent?.role])
 
   const handleMove = useCallback(async (lead, col) => {
     try {

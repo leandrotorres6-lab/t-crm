@@ -46,6 +46,38 @@ export default function KanbanBoard() {
   const [notifications, setNotifications] = useState([])
   const [toasts, setToasts] = useState([])
 
+  // Sistema de som — toca beep ao receber nova mensagem/lead
+  useEffect(() => {
+    const handler = (e) => {
+      try {
+        const type = e.detail?.type
+        const ctx = new (window.AudioContext || window.webkitAudioContext)()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        if (type === 'new_lead') {
+          // Dois beeps para novo lead
+          osc.frequency.setValueAtTime(880, ctx.currentTime)
+          osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.15)
+          gain.gain.setValueAtTime(0.3, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+          osc.start(ctx.currentTime)
+          osc.stop(ctx.currentTime + 0.4)
+        } else {
+          // Um beep para mensagem
+          osc.frequency.setValueAtTime(880, ctx.currentTime)
+          gain.gain.setValueAtTime(0.2, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
+          osc.start(ctx.currentTime)
+          osc.stop(ctx.currentTime + 0.25)
+        }
+      } catch {}
+    }
+    window.addEventListener('tcrm:play-sound', handler)
+    return () => window.removeEventListener('tcrm:play-sound', handler)
+  }, [])
+
   // Escuta toasts de nova mensagem
   useEffect(() => {
     const handler = (e) => {

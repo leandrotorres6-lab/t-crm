@@ -118,11 +118,15 @@ export function AppProvider({ children }) {
   useSocket('new_conversation', (lead) => {
     const id = String(lead.id)
     setUnreadCounts(prev => ({ ...prev, [id]: lead.unreadCount || 1 }))
-    // Toast de novo lead
     if (typeof window !== 'undefined') {
+      // Toast
       window.dispatchEvent(new CustomEvent('tcrm:toast', {
         detail: { text: `🆕 Novo lead: ${lead.name || 'Contato'}`, conversationId: id }
       }))
+      // Força KanbanColumn de leads a recarregar do backend
+      window.dispatchEvent(new CustomEvent('tcrm:reload-column', { detail: { column: 'leads' } }))
+      // Som de notificação
+      window.dispatchEvent(new CustomEvent('tcrm:play-sound', { detail: { type: 'new_lead' } }))
     }
   })
 
