@@ -407,7 +407,7 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
       </div>
 
       {/* Lista scrollável */}
-      <div ref={scrollRef} className="kanban-scroll flex-1 overflow-y-auto p-2.5 space-y-2" style={{ scrollbarWidth: 'thin' }}>
+      <div ref={scrollRef} className="kanban-scroll flex-1 overflow-y-auto space-y-2 safe-bottom" style={{ scrollbarWidth: 'thin', padding: '10px 8px 0 8px' }}>
         {/* Skeleton inicial */}
         {loading && allLeads.length === 0 && (
           <>

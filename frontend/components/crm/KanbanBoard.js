@@ -243,10 +243,11 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: header compacto ── */}
-      <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] flex-shrink-0"
+      <div className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border)] flex-shrink-0"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
         <button onClick={() => setSidebarOpen(true)}
-          className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+          className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+          style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
@@ -265,7 +266,7 @@ export default function KanbanBoard() {
       </div>
 
       {/* Toast de nova mensagem */}
-      <div className="fixed bottom-6 right-4 z-50 flex flex-col gap-2 pointer-events-none" style={{ maxWidth: '320px' }}>
+      <div className="fixed right-3 z-50 flex flex-col gap-2 pointer-events-none toast-bottom" style={{ maxWidth: '92vw', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
         {toasts.map(t => (
           <div key={t.id}
             onClick={() => { setToasts(prev => prev.filter(x => x.id !== t.id)) }}
@@ -337,7 +338,7 @@ export default function KanbanBoard() {
       {/* ── Mobile: bolhas de navegação ── */}
       <div className="md:hidden border-b border-[var(--border)] flex-shrink-0"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
-        <div className="flex gap-2.5 px-3 py-2.5 overflow-x-auto"
+        <div className="flex gap-2 px-2 py-2 overflow-x-auto"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {ALL_COLUMNS.map((col, i) => {
             const color = COL_COLORS[col]
@@ -348,14 +349,14 @@ export default function KanbanBoard() {
             return (
               <button key={col} onClick={() => setMobileCol(i)}
                 className="flex flex-col items-center gap-1 flex-shrink-0 transition-all duration-200 active:scale-90">
-                <div className="relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
+                <div className="relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200"
                   style={{
-                    backgroundColor: isActive ? color : color + '18',
-                    border: `2px solid ${isActive ? color : color + '35'}`,
-                    boxShadow: isActive ? `0 0 14px ${color}55` : 'none',
+                    backgroundColor: isActive ? color : color + '1a',
+                    border: `2px solid ${isActive ? color : color + '40'}`,
+                    boxShadow: isActive ? `0 0 16px ${color}60` : 'none',
                   }}>
                   <span className="font-bold leading-none"
-                    style={{ fontSize: count > 99 ? '10px' : count > 9 ? '13px' : '16px',
+                    style={{ fontSize: count > 99 ? '10px' : count > 9 ? '14px' : '17px',
                       color: isActive ? 'white' : color }}>
                     {count > 99 ? '99+' : count}
                   </span>
@@ -378,9 +379,9 @@ export default function KanbanBoard() {
                   )}
                 </div>
                 <span className="text-center font-semibold"
-                  style={{ fontSize: '9px', lineHeight: '1.2',
+                  style={{ fontSize: '10px', lineHeight: '1.2',
                     color: isActive ? color : 'var(--text-muted)',
-                    maxWidth: '48px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    maxWidth: '56px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {COL_LABELS[col]}
                 </span>
               </button>

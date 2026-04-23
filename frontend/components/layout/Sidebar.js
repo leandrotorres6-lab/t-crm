@@ -163,7 +163,8 @@ export default function Sidebar({ mobileOverlay = false }) {
         style={{ backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
         data-sidebar
         className={`${mobileOverlay ? 'w-60' : width} ${mobileClass} flex-shrink-0 flex flex-col transition-all duration-300`}
-      style={{ height: mobileOverlay ? '100dvh' : '100%' }}
+      style={{ height: mobileOverlay ? '100dvh' : '100%',
+        paddingBottom: mobileOverlay ? 'env(safe-area-inset-bottom, 0px)' : undefined }}
       >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-4 h-16 border-b border-white/5">
