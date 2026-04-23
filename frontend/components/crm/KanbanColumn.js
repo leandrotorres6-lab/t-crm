@@ -237,12 +237,17 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     return () => obs.disconnect()
   }, [hasMore, page, loadLeads])
 
-  // Eventos globais de movimento
+  // Eventos globais de movimento — remove da origem, dedup na chegada
   useEffect(() => {
-    const handler = ({ detail: { leadId, fromCol } }) => {
+    const handler = ({ detail: { leadId, fromCol, toCol } }) => {
       if (fromCol === columnId) {
-        setLeads(prev => prev.filter(l => l.id !== leadId))
-        setTotal(prev => Math.max(0, prev - 1))
+        // Remove da coluna de origem imediatamente
+        setLeads(prev => {
+          const exists = prev.some(l => String(l.id) === String(leadId))
+          if (!exists) return prev
+          setTotal(t => Math.max(0, t - 1))
+          return prev.filter(l => String(l.id) !== String(leadId))
+        })
       }
     }
     window.addEventListener('tcrm:lead-moved', handler)
@@ -330,13 +335,19 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
     if (columnId === 'agendado') { setScheduleModal({ lead }); return }
     if (columnId === 'aguardando_pagamento') { setPaymentModal({ lead }); return }
     applyPendingMove(lead, columnId)
+    // Adiciona ao destino apenas se não existe (dedup)
     setLeads(prev => prev.find(l => l.id === lead.id) ? prev : [{ ...lead, column: columnId }, ...prev])
     setTotal(prev => prev + 1)
+    // Notifica coluna de origem para remover imediatamente
     window.dispatchEvent(new CustomEvent('tcrm:lead-moved', { detail: { leadId: lead.id, fromCol: lead.column, toCol: columnId } }))
     kanbanCache.invalidate(lead.column); kanbanCache.invalidate(columnId)
     api.moveLead(lead.id, columnId, lead.column)
       .then(() => { onDrop?.(lead.id, lead.column, columnId) })
-      .catch(() => { window.dispatchEvent(new CustomEvent('tcrm:lead-moved', { detail: { leadId: lead.id, fromCol: columnId, toCol: lead.column } })); loadLeads(1, false) })
+      .catch(() => {
+        // Rollback: devolver ao original
+        window.dispatchEvent(new CustomEvent('tcrm:lead-moved', { detail: { leadId: lead.id, fromCol: columnId, toCol: lead.column } }))
+        loadLeads(1, false)
+      })
   }
 
   const color = COL_COLORS[columnId] || '#3b82f6'
@@ -371,11 +382,21 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   }, [columnId, currentAgent?.role])
 
   const handleMove = useCallback(async (lead, col) => {
+    // Optimistic: remove imediatamente da coluna atual
+    setLeads(prev => prev.filter(l => l.id !== lead.id))
+    setTotal(prev => Math.max(0, prev - 1))
+    // Notifica coluna destino via evento global
+    window.dispatchEvent(new CustomEvent('tcrm:lead-moved', { detail: { leadId: lead.id, fromCol: lead.column, toCol: col } }))
+    kanbanCache.invalidate(lead.column)
+    kanbanCache.invalidate(col)
     try {
       await api.moveLead(lead.id, col, lead.column)
-      setLeads(prev => prev.filter(l => l.id !== lead.id))
-      setTotal(prev => Math.max(0, prev - 1))
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      // Rollback se API falhar
+      setLeads(prev => [{ ...lead }, ...prev])
+      setTotal(prev => prev + 1)
+    }
   }, [])
 
   const handleFinalize = useCallback(async (lead) => {

@@ -214,17 +214,25 @@ export function AppProvider({ children }) {
   }, [])
 
   useSocket('lead_moved', ({ id, column, fromColumn }) => {
-    clearPendingMove(String(id))
+    const leadId = String(id)
+
+    // Recupera fromCol do pendingMoves se o socket não trouxer (evita card fantasma)
+    const pendingFrom = pendingMoves[leadId]?.fromCol
+    const resolvedFrom = fromColumn || pendingFrom
+
+    clearPendingMove(leadId)
+
     // Atualiza selectedLead se for o mesmo
     setSelectedLeadRaw(prev => {
-      if (prev && String(prev.id) === String(id)) return { ...prev, column }
+      if (prev && String(prev.id) === leadId) return { ...prev, column }
       return prev
     })
-    // Notifica as colunas para mover o card instantaneamente
-    // (acontece quando alguém muda a label no Chatwoot)
-    if (typeof window !== 'undefined' && fromColumn && fromColumn !== column) {
+
+    // Sempre despacha tcrm:lead-moved para garantir remoção do fromCol
+    // mesmo quando fromColumn não vem no payload do socket
+    if (typeof window !== 'undefined' && resolvedFrom && resolvedFrom !== column) {
       window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
-        detail: { leadId: String(id), fromCol: fromColumn, toCol: column }
+        detail: { leadId, fromCol: resolvedFrom, toCol: column }
       }))
     }
   })
