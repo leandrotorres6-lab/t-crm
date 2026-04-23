@@ -2,7 +2,16 @@
 // Detecção robusta: último messageId por conversa, sem depender de unread_count
 // Tolerante a bot rápido, múltiplas mensagens e delay de API
 
-const POLL_INTERVAL = 3000
+const POLL_INTERVAL = 5000   // 5s — polling é fallback; webhook é o canal principal
+let webhookActive = false    // true = webhook recebeu msg recentemente → polling reduz frequência
+let webhookTimer  = null
+
+// Chamado pelo webhook quando recebe mensagem — pausa polling por 10s
+function webhookPing() {
+  webhookActive = true
+  clearTimeout(webhookTimer)
+  webhookTimer = setTimeout(() => { webhookActive = false }, 10000)
+}
 
 const lastProcessedId = new Map()  // convId → último msgId processado
 const processedSet    = new Set()  // dedup global (últimos 1000)
@@ -83,6 +92,8 @@ function processMessage(convId, msg, senderFallback) {
 // ─── Ciclo principal ──────────────────────────────────────────────────────────
 async function poll() {
   if (isPolling || !warmDone) return
+  // Webhook ativo recentemente → pula este ciclo (evita trabalho duplicado)
+  if (webhookActive) { return }
   isPolling = true
 
   try {
@@ -190,4 +201,4 @@ function stop() {
   clearInterval(pollTimer); pollTimer = null
 }
 
-module.exports = { start, stop }
+module.exports = { start, stop, webhookPing }

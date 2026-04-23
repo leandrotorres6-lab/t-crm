@@ -19,7 +19,11 @@ export function getSocket() {
       pingInterval: 25000,
       pingTimeout: 20000,
     })
-    socket.on('connect', () => console.log('[Socket] ✅ Conectado ao backend'))
+    socket.on('connect', () => {
+      console.log('[Socket] ✅ Conectado ao backend')
+      // Solicita snapshot de unread ao conectar (primeira vez e reconexões)
+      socket.emit('sync_request')
+    })
     socket.on('disconnect', (reason) => console.warn('[Socket] ❌ Desconectado:', reason))
     socket.on('connect_error', (e) => console.warn('[Socket] Erro de conexão:', e.message))
     socket.on('reconnect', (n) => console.log(`[Socket] Reconectado após ${n} tentativas`))

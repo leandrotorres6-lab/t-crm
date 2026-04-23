@@ -50,6 +50,20 @@ const io = new Server(server, {
 })
 io.on('connection', s => {
   console.log(`[Socket] Cliente conectado: ${s.id} (total: ${io.engine.clientsCount})`)
+
+  // Snapshot de unread ao conectar/reconectar — elimina janela cega
+  s.on('sync_request', () => {
+    try {
+      const state = store._state()
+      const unread = {}
+      Object.entries(state.unread || {}).forEach(([id, count]) => {
+        if (count > 0) unread[id] = count
+      })
+      s.emit('sync_state', { unreadCounts: unread })
+      console.log(`[Socket] Sync enviado para ${s.id}: ${Object.keys(unread).length} conversas com unread`)
+    } catch {}
+  })
+
   s.on('disconnect', (reason) => {
     console.log(`[Socket] Desconectado: ${s.id} (${reason})`)
   })
@@ -231,8 +245,9 @@ async function getAllConversations() {
     if ((conv.labels || []).some(l => l.toLowerCase() === 'cancelado')) return true
 
     // 5. Conversa com status "resolved" — sempre oculta do Kanban
-    // (inclui finalizadas pelo T-CRM, independente de labels)
     if (conv.status === 'resolved') return true
+    // 5b. Conversa marcada como resolvida no store local (antes do Chatwoot atualizar)
+    if (store.getColumn(String(conv.id)) === '__resolved__') return true
 
     return false
   }
@@ -499,8 +514,9 @@ app.post('/api/kanban/:id/finalize', async (req, res) => {
       db.updateMeta(id, { status: 'resolved' }).catch(() => {})
       db.resetUnread(id).catch(() => {})
     }
-    // Limpa cache em memória
+    // Limpa estado em memória imediatamente (não espera expirar TTL)
     store.resetUnread(id)
+    store.setColumn(id, '__resolved__')  // marca como resolvido no store
     store.invalidateCache()
     // Notifica frontend para remover do Kanban imediatamente
     io.emit('conversation_resolved', { id })
@@ -1381,6 +1397,11 @@ server.listen(PORT, async () => {
           })
           if (subs.length) console.log(`[Push] ${subs.length} subscriptions restauradas do Supabase`)
         }).catch(() => {})
+      }
+
+      // Restaura store do Supabase se necessário (protege contra redeploy Railway)
+      if (db.DB_READY()) {
+        await store.restoreFromSupabase(() => db.getAll()).catch(() => {})
       }
 
       // Inicia polling do Chatwoot (substitui webhook quando VPS não alcança Railway)

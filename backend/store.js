@@ -131,6 +131,33 @@ const store = {
 }
 
 load()
+
+// Restaura colunas do Supabase se store.json estiver vazio (ex: após redeploy Railway)
+store.restoreFromSupabase = async (supabaseGetAll) => {
+  if (Object.keys(state.columns).length > 0) return  // já tem dados locais
+  try {
+    const leads = await supabaseGetAll()
+    if (!leads?.length) return
+    let restored = 0
+    leads.forEach(l => {
+      if (l.id && l.column) {
+        state.columns[String(l.id)] = l.column
+        if (l.scheduledAt || l.paymentDueDate || l.observacao) {
+          state.meta[String(l.id)] = {
+            scheduledAt: l.scheduledAt || null,
+            paymentDueDate: l.paymentDueDate || null,
+            observacao: l.observacao || '',
+          }
+        }
+        restored++
+      }
+    })
+    console.log(`📂 Store restaurado do Supabase: ${restored} leads`)
+  } catch (e) {
+    console.warn('[Store] Falha ao restaurar do Supabase:', e.message)
+  }
+}
+
 // Expõe state interno para o server.js verificar quais IDs têm unread registrado
 store._state = () => state
 

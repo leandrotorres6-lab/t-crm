@@ -84,6 +84,20 @@ export function AppProvider({ children }) {
     }
   })
 
+  // Snapshot de estado ao reconectar — sincroniza unread sem janela cega
+  useSocket('sync_state', ({ unreadCounts: snapshot }) => {
+    if (!snapshot || !Object.keys(snapshot).length) return
+    setUnreadCounts(prev => {
+      const merged = { ...prev }
+      Object.entries(snapshot).forEach(([id, count]) => {
+        // Usa o maior valor: se local já incrementou mais que o servidor, mantém
+        merged[id] = Math.max(prev[id] || 0, count)
+      })
+      return merged
+    })
+    console.log(`[Socket] sync_state: ${Object.keys(snapshot).length} conversas com unread`)
+  })
+
   // Conversa finalizada/resolvida — remove do kanban e fecha o chat se aberta
   useSocket('conversation_resolved', ({ id }) => {
     const convId = String(id)
