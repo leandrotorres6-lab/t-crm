@@ -2005,6 +2005,8 @@ export default function ChatPanel() {
               }}
                 placeholder="Digite / para mensagens rápidas..."
                 rows={1}
+                inputMode="text"
+                enterKeyHint="send"
                 className="flex-1 bg-transparent resize-none outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] leading-relaxed"
                 style={{ minHeight: '24px', overflowY: 'auto', transition: 'height 0.1s ease' }} />
 

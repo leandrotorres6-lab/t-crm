@@ -126,8 +126,9 @@ export function AppProvider({ children }) {
       }))
       // Força KanbanColumn de leads a recarregar do backend
       window.dispatchEvent(new CustomEvent('tcrm:reload-column', { detail: { column: 'leads' } }))
-      // Som + popup
+      // Som + vibração + popup
       playSound('lead')
+      try { navigator.vibrate?.([100, 50, 100]) } catch {}
       showNotification('🆕 Novo lead', lead.name || 'Novo contato', { tag: `lead-${lead.id}` })
     }
   })
@@ -164,8 +165,9 @@ export function AppProvider({ children }) {
 
       const senderName = sn || message?.senderName || 'Cliente'
 
-      // Som + popup nativo + toast — via utilitário centralizado
+      // Som + vibração + popup nativo + toast
       playSound('message')
+      try { navigator.vibrate?.([80]) } catch {}
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tcrm:toast', {

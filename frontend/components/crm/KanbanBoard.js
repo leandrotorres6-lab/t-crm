@@ -6,7 +6,7 @@ import { useApp } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
 import { kanbanCache } from '../../lib/kanbanCache'
 import { useSocket } from '../../lib/socket'
-import { ChevronLeft, ChevronRight, RefreshCw, Bell } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Bell, Search, X as XIcon } from 'lucide-react'
 
 const ALL_COLUMNS = [
   'leads','negociacao','aguardando_cotacao','agendado',
@@ -43,6 +43,7 @@ export default function KanbanBoard() {
   const [colUnreadCount, setColUnreadCount] = useState({})
   const [searchResults, setSearchResults] = useState(null)
   const [colRefresh, setColRefresh] = useState({})
+  const [showMobileSearch, setShowMobileSearch] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [toasts, setToasts] = useState([])
 
@@ -253,26 +254,40 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: header compacto ── */}
-      <div className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border)] flex-shrink-0"
+      <div className="md:hidden flex-shrink-0 border-b border-[var(--border)]"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
-        <button onClick={() => setSidebarOpen(true)}
-          className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
-          style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-        </button>
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentColor }} />
-          <span className="text-sm font-bold text-[var(--text-primary)] truncate">{COL_LABELS[currentColId]}</span>
-          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-            style={{ backgroundColor: currentColor + '20', color: currentColor }}>
-            {columnCounts[currentColId] || 0}
-          </span>
-        </div>
-        <button onClick={refreshAll} className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
-          <RefreshCw size={13} />
-        </button>
+        {showMobileSearch ? (
+          <div className="flex items-center gap-2 px-3 py-2">
+            <SearchBar
+              onResults={results => setSearchResults(results)}
+              onClear={() => setSearchResults(null)}
+              autoFocus
+            />
+            <button onClick={() => { setShowMobileSearch(false); setSearchResults(null) }}
+              className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+              <XIcon size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2.5">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentColor }} />
+              <span className="text-sm font-bold text-[var(--text-primary)] truncate">{COL_LABELS[currentColId]}</span>
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: currentColor + '20', color: currentColor }}>
+                {columnCounts[currentColId] || 0}
+              </span>
+            </div>
+            <button onClick={() => setShowMobileSearch(true)}
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+              <Search size={16} />
+            </button>
+            <button onClick={refreshAll}
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-[var(--text-muted)] flex-shrink-0">
+              <RefreshCw size={14} className={Object.values(colRefresh).some(v => v > 0) ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Toast de nova mensagem */}

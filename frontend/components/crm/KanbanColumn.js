@@ -122,6 +122,9 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const retryRef = useRef(null)
   const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
   const [contextMenu, setContextMenu] = useState(null)
+  const [pullY, setPullY] = useState(0)
+  const [pulling, setPulling] = useState(false)
+  const pullStartY = useRef(0)
   const [agents, setAgents] = useState([])
 
   // Carrega agentes uma vez
@@ -449,7 +452,30 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
       </div>
 
       {/* Lista scrollável */}
-      <div ref={scrollRef} className="kanban-scroll flex-1 overflow-y-auto space-y-2 safe-bottom" style={{ scrollbarWidth: 'thin', padding: '10px 8px 0 8px' }}>
+      <div ref={scrollRef} className="kanban-scroll flex-1 overflow-y-auto space-y-2 safe-bottom"
+        style={{ scrollbarWidth: 'thin', padding: '10px 8px 0 8px' }}
+        onTouchStart={e => {
+          if (scrollRef.current?.scrollTop === 0) {
+            pullStartY.current = e.touches[0].clientY
+            setPulling(true)
+          }
+        }}
+        onTouchMove={e => {
+          if (!pulling) return
+          const dy = e.touches[0].clientY - pullStartY.current
+          if (dy > 0 && dy < 80) setPullY(dy)
+        }}
+        onTouchEnd={() => {
+          if (pullY > 50) { loadLeads(1, true) }
+          setPullY(0)
+          setPulling(false)
+        }}>
+        {/* Pull to refresh indicator */}
+        {pullY > 10 && (
+          <div className="flex justify-center py-1 transition-all" style={{ opacity: pullY / 60 }}>
+            <div className="w-5 h-5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+          </div>
+        )}
         {/* Skeleton inicial */}
         {loading && allLeads.length === 0 && (
           <>

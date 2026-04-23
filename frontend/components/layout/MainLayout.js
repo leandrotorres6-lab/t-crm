@@ -1,8 +1,10 @@
 'use client'
 import { useApp } from '../../contexts/AppContext'
 import Sidebar from './Sidebar'
+import MobileNav from './MobileNav'
 
 export default function MainLayout({ children, chat, inbox }) {
+  const _swipeStartX = { current: 0 }
   const { selectedLead, setSelectedLead } = useApp()
   const chatOpen = !!selectedLead
   const isInboxMode = !!inbox
@@ -28,15 +30,16 @@ export default function MainLayout({ children, chat, inbox }) {
         <Sidebar />
       </div>
 
-      {/* Sidebar mobile — overlay */}
+      {/* Mobile: bottom tabs + drawer */}
       <div className="md:hidden">
-        <Sidebar mobileOverlay />
+        <MobileNav />
       </div>
 
-      {/* Área de conteúdo */}
+      {/* Área de conteúdo — padding bottom no mobile para o bottom nav */}
+      <style>{`@media (max-width: 767px) { .main-content-area { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important; } }`}</style>
       {isInboxMode ? (
         /* INBOX MODE: [Lista] | [Chat] */
-        <div className="flex flex-1 overflow-hidden min-w-0">
+        <div className="flex flex-1 overflow-hidden min-w-0 main-content-area">
           {/* Lista — esconde quando chat aberto no mobile */}
           <div className={`border-r border-[var(--border)] overflow-hidden flex-shrink-0 transition-all duration-300
             ${chatOpen ? 'w-0 pointer-events-none' : 'w-full'}
@@ -60,7 +63,7 @@ export default function MainLayout({ children, chat, inbox }) {
 
       ) : (
         /* KANBAN MODE: Kanban + Chat slide */
-        <div className="flex flex-1 overflow-hidden min-w-0 relative">
+        <div className="flex flex-1 overflow-hidden min-w-0 relative main-content-area">
 
           {/* Kanban — esconde no mobile quando chat aberto */}
           <div className={`flex-1 overflow-hidden min-w-0 transition-all duration-300
@@ -86,10 +89,15 @@ export default function MainLayout({ children, chat, inbox }) {
                 {chat}
               </div>
 
-              {/* Mobile: tela cheia sobre o kanban */}
+              {/* Mobile: tela cheia sobre o kanban — swipe right para voltar */}
               {chatOpen && (
                 <div className="md:hidden absolute inset-0 flex flex-col z-10"
-                  style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                  style={{ backgroundColor: 'var(--bg-secondary)' }}
+                  onTouchStart={e => { _swipeStartX.current = e.touches[0].clientX }}
+                  onTouchEnd={e => {
+                    const dx = e.changedTouches[0].clientX - (_swipeStartX.current || 0)
+                    if (dx > 80) setSelectedLead(null)  // swipe right → volta ao kanban
+                  }}>
                   <BackButton label="Voltar ao Kanban" />
                   <div className="flex-1 overflow-hidden">{chat}</div>
                 </div>
