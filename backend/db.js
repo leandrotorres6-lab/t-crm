@@ -134,7 +134,7 @@ async function getByColumn(kanbanColumn, { limit = 15, offset = 0, assignedTo = 
     .from('leads')
     .select('*', { count: 'exact' })
     .eq('kanban_column', kanbanColumn)
-    .eq('status', 'open')
+    .neq('status', 'resolved')
     .order('unread_count', { ascending: false })
     .order('last_message_at', { ascending: false, nullsLast: true })
     .range(offset, offset + limit - 1)
