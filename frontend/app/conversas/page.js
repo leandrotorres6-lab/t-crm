@@ -1,6 +1,6 @@
 'use client'
 import { useMobileSearch } from '../../lib/useMobileSearch'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { persistentCache } from '../../lib/persistentCache'
 const INBOX_CACHE_KEY = 'inbox'
@@ -117,7 +117,10 @@ function ConversasList() {
   const [allLeads, setAllLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearchVal] = useState('')
-  const { inputProps: searchInputProps } = useMobileSearch((v) => setSearchVal(v))
+  const searchRef = useRef('')
+  const { inputProps: searchInputProps } = useMobileSearch(
+    useCallback((v) => { searchRef.current = v; setSearchVal(v) }, [])
+  )
   const { selectedLead, setSelectedLead, unreadCounts, currentAgent, unreadUpdatedAt } = useApp()
 
   const load = useCallback(async (force = false) => {
@@ -197,18 +200,27 @@ function ConversasList() {
     setAllLeads(prev => [lead, ...prev])
   })
 
-  const filtered = allLeads.filter(lead => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || lead.name.toLowerCase().includes(q) ||
-      lead.phone.includes(q) || (lead.lastMessage || '').toLowerCase().includes(q)
-    if (!matchSearch) return false
-    if (tab === 'nao_lidas') {
-      return (unreadCounts[lead.id] || lead.unreadCount || 0) > 0
-    }
-    return true
-  })
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const qDigits = q.replace(/\D/g, '')  // só dígitos para busca de telefone
+    return allLeads.filter(lead => {
+      const matchSearch = !q ||
+        (lead.name  || '').toLowerCase().includes(q) ||
+        (lead.phone || '').replace(/\D/g, '').includes(qDigits || q) ||
+        (lead.phone || '').toLowerCase().includes(q) ||
+        (lead.lastMessage || '').toLowerCase().includes(q)
+      if (!matchSearch) return false
+      if (tab === 'nao_lidas') {
+        return (unreadCounts[lead.id] || lead.unreadCount || 0) > 0
+      }
+      return true
+    })
+  }, [allLeads, search, tab, unreadCounts])
 
-  const unreadTotal = allLeads.filter(l => (unreadCounts[l.id] || l.unreadCount || 0) > 0).length
+  const unreadTotal = useMemo(
+    () => allLeads.filter(l => (unreadCounts[l.id] || l.unreadCount || 0) > 0).length,
+    [allLeads, unreadCounts]
+  )
 
   return (
     <div className="flex flex-col h-full w-full" style={{ backgroundColor: 'var(--bg-secondary)' }}>

@@ -300,10 +300,12 @@ export default function ContactsPage() {
   const [total, setTotal] = useState(0)
   const bottomRef = useRef(null)
   const loadingRef = useRef(false)
+  // latestLoad ref evita que a callback do hook seja recriada a cada render
+  const loadRef = useRef(null)
   const { inputProps: searchInputProps } = useMobileSearch((v) => {
     setQueryInternal(v)
     setSelected(null)
-    load(v, 1, true)
+    loadRef.current?.(v, 1, true)
   })
 
   const load = useCallback(async (q, p, reset = false) => {
@@ -324,7 +326,10 @@ export default function ContactsPage() {
     }
   }, [])
 
-  useEffect(() => { load('', 1, true) }, [])
+  useEffect(() => {
+    loadRef.current = load
+    load('', 1, true)
+  }, [load])
 
   // Lazy load ao rolar
   useEffect(() => {

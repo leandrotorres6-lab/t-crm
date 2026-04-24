@@ -14,14 +14,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  */
 export function useMobileSearch(onSearch, delay = 380) {
   const [value, setValue] = useState('')
-  const debounceRef = useRef(null)
+  const debounceRef  = useRef(null)
   const latestValue  = useRef('')
   const inputRef     = useRef(null)
+  // onSearchRef: sempre atual, mas não causa recriação de triggerSearch
+  const onSearchRef  = useRef(onSearch)
+  useEffect(() => { onSearchRef.current = onSearch }, [onSearch])
 
   const triggerSearch = useCallback((v) => {
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => onSearch(v), delay)
-  }, [onSearch, delay])
+    debounceRef.current = setTimeout(() => onSearchRef.current?.(v), delay)
+  }, [delay])  // delay raramente muda; onSearch lido via ref → sem loop
 
   const handleChange = useCallback((e) => {
     const v = e.currentTarget?.value ?? e.target?.value ?? ''
