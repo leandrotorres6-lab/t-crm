@@ -498,17 +498,31 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
           />
         )}
 
-        {/* Cards */}
-        {allLeads.map(lead => (
-          <div key={lead.id} className="kanban-card-wrap"
-            onContextMenu={e => {
-              e.preventDefault()
-              e.stopPropagation()
-              setContextMenu({ x: e.clientX, y: e.clientY, lead })
-            }}>
-            <KanbanCard lead={lead} columnId={columnId} />
-          </div>
-        ))}
+        {/* Cards — long press no mobile abre o mesmo menu de contexto do desktop */}
+        {allLeads.map(lead => {
+          let longPressTimer = null
+          return (
+            <div key={lead.id} className="kanban-card-wrap"
+              onContextMenu={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                setContextMenu({ x: e.clientX, y: e.clientY, lead })
+              }}
+              onTouchStart={e => {
+                const touch = e.touches[0]
+                longPressTimer = setTimeout(() => {
+                  // Vibração tátil ao abrir o menu
+                  try { navigator.vibrate?.(30) } catch {}
+                  setContextMenu({ x: touch.clientX, y: touch.clientY, lead })
+                  longPressTimer = null
+                }, 500)
+              }}
+              onTouchMove={() => { clearTimeout(longPressTimer); longPressTimer = null }}
+              onTouchEnd={() => { clearTimeout(longPressTimer); longPressTimer = null }}>
+              <KanbanCard lead={lead} columnId={columnId} />
+            </div>
+          )
+        })}
 
         {/* Loader de paginação */}
         {loadingMore && (

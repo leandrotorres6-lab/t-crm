@@ -1076,8 +1076,8 @@ app.get('/api/search', async (req, res) => {
       }
     } catch (e) { console.warn('[Search] Cache error:', e.message) }
 
-    // ── CAMADA 3: Chatwoot API — sempre consultada para não perder mensagens recentes ──
-    // (addResult já garante que o mais recente vence — Chatwoot pode sobrescrever Supabase)
+    // ── CAMADA 3: Chatwoot API — complementar ao Supabase ──
+    // Sempre consultado, mas addResult só substitui se Chatwoot for mais recente
     if (CHATWOOT_READY) {
       try {
         const { contacts } = await cw.getContacts(qTrim, 1)

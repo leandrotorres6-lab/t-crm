@@ -99,6 +99,15 @@ export function AppProvider({ children }) {
     console.log(`[Socket] sync_state: ${Object.keys(snapshot).length} conversas com unread`)
   })
 
+  // Agendamento criado/atualizado — atualiza aba de agendamentos em tempo real
+  useSocket('schedule_created', ({ id, scheduledAt, observacao, lead }) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:schedule-created', {
+        detail: { id: String(id), scheduledAt, observacao, lead }
+      }))
+    }
+  })
+
   // Conversa finalizada/resolvida — remove do kanban e fecha o chat se aberta
   useSocket('conversation_resolved', ({ id }) => {
     const convId = String(id)

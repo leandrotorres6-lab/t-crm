@@ -90,6 +90,22 @@ export default function AgendamentoPage() {
   const [filter, setFilter] = useState('todos')
 
   useEffect(() => {
+    // Escuta agendamentos criados em tempo real
+    const handler = (e) => {
+      const { lead, scheduledAt, id } = e.detail || {}
+      if (!lead && !scheduledAt) return
+      setAll(prev => {
+        const exists = prev.find(l => String(l.id) === String(id))
+        const entry = lead ? { ...lead, scheduledAt } : { id, scheduledAt }
+        if (exists) return prev.map(l => String(l.id) === String(id) ? { ...l, scheduledAt } : l)
+        return [entry, ...prev]
+      })
+    }
+    window.addEventListener('tcrm:schedule-created', handler)
+    return () => window.removeEventListener('tcrm:schedule-created', handler)
+  }, [])
+
+  useEffect(() => {
     api.getColumnLeads('agendado', 1).then(data => {
       setAgendados(data.items || [])
     }).catch(console.error).finally(() => setLoading(false))
