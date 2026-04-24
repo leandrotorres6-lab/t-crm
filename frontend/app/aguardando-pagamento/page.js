@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import { showNotification, playSound } from '../../lib/notifications'
 import MainLayout from '../../components/layout/MainLayout'
