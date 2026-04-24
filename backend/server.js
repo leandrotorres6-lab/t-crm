@@ -1009,6 +1009,7 @@ app.get('/api/dashboard', async (req, res) => {
       { stage: 'Agendado',    column: 'agendado',             color: '#06b6d4' },
       { stage: 'Ag. Pgto',   column: 'aguardando_pagamento', color: '#f97316' },
       { stage: 'Pago',        column: 'pago',                 color: '#22c55e' },
+      { stage: 'Sem Retorno', column: 'sem_retorno',          color: '#6b7280' },
     ]
     const funnel = funnelStages.map(s => {
       const count = period.filter(c => c.column === s.column).length
