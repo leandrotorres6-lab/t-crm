@@ -80,6 +80,7 @@ function fromRow(row) {
     inboxId: row.inbox_id,
     contactId: row.contact_id,
     scheduledAt: row.scheduled_at,
+    scheduleNotifiedAt: row.schedule_notified_at,
     paymentDueDate: row.payment_due_date,
     observacao: row.observacao,
   }
@@ -311,6 +312,33 @@ async function getLeadById(id) {
   return fromRow(data)
 }
 
+// Busca agendamentos que devem disparar agora (janela ±5min, não notificados ainda)
+async function getScheduledDue() {
+  if (!DB_READY) return []
+  const now    = new Date()
+  const start  = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
+  const end    = new Date(now.getTime() + 60 * 1000).toISOString()  // 1 min à frente
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*')
+    .not('scheduled_at', 'is', null)
+    .gte('scheduled_at', start)
+    .lte('scheduled_at', end)
+    .or('schedule_notified_at.is.null,schedule_notified_at.lt.' + start)  // não notificado ou antiga
+  if (error) { console.error('[DB] getScheduledDue error:', error.message); return [] }
+  return (data || []).map(fromRow)
+}
+
+// Marca lead como notificado para não disparar novamente
+async function markScheduleNotified(id) {
+  if (!DB_READY) return
+  const { error } = await supabase
+    .from('leads')
+    .update({ schedule_notified_at: new Date().toISOString() })
+    .eq('id', String(id))
+  if (error) console.error('[DB] markScheduleNotified error:', error.message)
+}
+
 async function deletePushSubscription(agentId) {
   if (!DB_READY) return
   await supabase.from('push_subscriptions').delete().eq('agent_id', String(agentId))
@@ -326,4 +354,4 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta }
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified }

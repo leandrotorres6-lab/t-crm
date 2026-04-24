@@ -70,6 +70,40 @@ export default function NotificationAlarm() {
   useEffect(() => {
     loadAgendados()
 
+    // Novo agendamento criado em tempo real → adiciona ao leadsRef imediatamente
+    // Assim a notificação dispara sem esperar o próximo ciclo de 3 min
+    const onScheduleCreated = (e) => {
+      const { lead, scheduledAt, id } = e.detail || {}
+      if (!scheduledAt) return
+      const entry = lead ? { ...lead, scheduledAt } : { id, scheduledAt }
+      const exists = leadsRef.current.find(l => String(l.id) === String(id))
+      if (exists) {
+        leadsRef.current = leadsRef.current.map(l =>
+          String(l.id) === String(id) ? { ...l, scheduledAt } : l
+        )
+      } else {
+        leadsRef.current = [entry, ...leadsRef.current]
+      }
+    }
+    window.addEventListener('tcrm:schedule-created', onScheduleCreated)
+
+    // Alarme disparado pelo cron do backend — toca som + mostra popup diretamente
+    const onScheduleAlarm = (e) => {
+      const { lead } = e.detail || {}
+      if (!lead) return
+      // Verifica se já foi mostrado nesta sessão
+      const key = `${lead.id}_${lead.scheduledAt}`
+      if (shownRef.current.has(key)) return
+      shownRef.current.add(key)
+      playSound('alarm')
+      showNotification(`🔔 Contato agora: ${lead.name}`, lead.observacao || `Tel: ${lead.phone}`, {
+        requireInteraction: true,
+        tag: `alarm-${lead.id}`,
+      })
+      setAlarms(prev => [...prev, lead])
+    }
+    window.addEventListener('tcrm:schedule-alarm', onScheduleAlarm)
+
     // Verifica a cada 15 segundos (janela de 30s garante que não perde)
     checkRef.current = setInterval(checkAlarms, 15 * 1000)
     // Recarrega lista a cada 3 min
@@ -79,6 +113,8 @@ export default function NotificationAlarm() {
     return () => {
       clearInterval(checkRef.current)
       clearInterval(loadInterval)
+      window.removeEventListener('tcrm:schedule-created', onScheduleCreated)
+      window.removeEventListener('tcrm:schedule-alarm', onScheduleAlarm)
     }
   }, [loadAgendados, checkAlarms])
 

@@ -1523,6 +1523,49 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
 // ─── USERS (legacy) ──────────────────────────────────────────────────────────
 app.get('/api/users', (req, res) => res.json(require('./data/mockData').users))
 
+// ─── CRON DE AGENDAMENTOS ────────────────────────────────────────────────────
+// Roda a cada 60s no backend — independente do frontend estar aberto
+// Garante notificação mesmo com browser fechado (push via Service Worker)
+async function runScheduleCron() {
+  if (!db.DB_READY()) return
+  try {
+    const due = await db.getScheduledDue()
+    if (!due.length) return
+
+    console.log(`[Cron] ${due.length} agendamento(s) para notificar`)
+
+    for (const lead of due) {
+      // Marca como notificado ANTES de enviar (evita duplicação em caso de erro)
+      await db.markScheduleNotified(lead.id).catch(() => {})
+
+      const title = `🔔 Contato agora: ${lead.name}`
+      const body  = lead.observacao || `Tel: ${lead.phone}`
+
+      // Push para agente atribuído (ou todos os supervisores se não atribuído)
+      await sendPushToAssigned(
+        lead.id,
+        title,
+        body,
+        { type: 'schedule', conversationId: String(lead.id), url: '/agendamento' }
+      ).catch(e => console.warn('[Cron] Push error:', e.message))
+
+      // Socket para frontend aberto (popup + som)
+      io.emit('schedule_alarm', {
+        lead,
+        title,
+        body,
+      })
+
+      console.log(`[Cron] ✅ Notificado: ${lead.name} (conv=${lead.id}) agendado ${lead.scheduledAt}`)
+    }
+  } catch (e) {
+    console.error('[Cron] Erro no cron de agendamentos:', e.message)
+  }
+}
+
+// Inicia cron após servidor estar pronto (aguarda DB)
+let schedulesCronStarted = false
+
 // ─── START ───────────────────────────────────────────────────────────────────
 server.listen(PORT, async () => {
   console.log('\n╔══════════════════════════════════════════╗')
@@ -1555,6 +1598,17 @@ server.listen(PORT, async () => {
       if (db.DB_READY()) {
         db.upsertMany(all).then(() => console.log('✅ Supabase sincronizado'))
       }
+      // Inicia cron de agendamentos (60s) — notifica mesmo com app fechado
+      if (!schedulesCronStarted) {
+        schedulesCronStarted = true
+        // Primeiro check em 30s (aguarda warmup completo)
+        setTimeout(() => {
+          runScheduleCron()
+          setInterval(runScheduleCron, 60 * 1000)
+          console.log('⏰ Cron de agendamentos ativo (60s)')
+        }, 30 * 1000)
+      }
+
       // Restaura push subscriptions do Supabase (sobrevivem a redeploy)
       if (db.DB_READY()) {
         db.loadPushSubscriptions().then(subs => {

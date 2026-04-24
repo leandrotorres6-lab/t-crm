@@ -108,6 +108,15 @@ export function AppProvider({ children }) {
     }
   })
 
+  // Alarme do cron do backend — app estava fechado/background, agora abriu
+  useSocket('schedule_alarm', ({ lead, title, body }) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:schedule-alarm', {
+        detail: { lead, title, body }
+      }))
+    }
+  })
+
   // Conversa finalizada/resolvida — remove do kanban e fecha o chat se aberta
   useSocket('conversation_resolved', ({ id }) => {
     const convId = String(id)
