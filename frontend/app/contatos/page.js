@@ -1,4 +1,5 @@
 'use client'
+import { useMobileSearch } from '../../lib/useMobileSearch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import MainLayout from '../../components/layout/MainLayout'
 import { api } from '../../lib/api'
@@ -292,14 +293,18 @@ function ContactDetail({ contact, onClose }) {
 export default function ContactsPage() {
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(null)
-  const [query, setQuery] = useState('')
+  const [query, setQueryInternal] = useState('')
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
   const bottomRef = useRef(null)
-  const searchTimeout = useRef(null)
   const loadingRef = useRef(false)
+  const { inputProps: searchInputProps } = useMobileSearch((v) => {
+    setQueryInternal(v)
+    setSelected(null)
+    load(v, 1, true)
+  })
 
   const load = useCallback(async (q, p, reset = false) => {
     if (loadingRef.current) return
@@ -334,14 +339,7 @@ export default function ContactsPage() {
     return () => obs.disconnect()
   }, [hasMore, page, query])
 
-  const handleSearch = (v) => {
-    setQuery(v)
-    clearTimeout(searchTimeout.current)
-    searchTimeout.current = setTimeout(() => {
-      setSelected(null)
-      load(v, 1, true)
-    }, 300)
-  }
+
 
   return (
     <MainLayout>
@@ -367,11 +365,11 @@ export default function ContactsPage() {
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
-                type="text"
-                placeholder="Nome, telefone ou email..."
+                {...searchInputProps}
                 value={query}
-                onChange={e => handleSearch(e.target.value)}
+                placeholder="Nome, telefone ou email..."
                 className="input-theme pl-9 text-sm"
+                style={{ ...searchInputProps.style }}
               />
             </div>
           </div>

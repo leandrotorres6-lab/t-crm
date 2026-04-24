@@ -1,5 +1,6 @@
 'use client'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMobileSearch } from '../../lib/useMobileSearch'
+import { useCallback, useEffect, useState } from 'react'
 import { Search, X, SlidersHorizontal, User, Tag, ChevronDown } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../contexts/AppContext'
@@ -11,27 +12,28 @@ const COL_LABELS = {
 }
 
 export default function SearchBar({ onResults, onClear, autoFocus = false }) {
-  const [query, setQuery] = useState('')
   const [filters, setFilters] = useState({ column: '', assignee: '', product: '' })
   const [showFilters, setShowFilters] = useState(false)
   const [agents, setAgents] = useState([])
   const [searching, setSearching] = useState(false)
-  const debounceRef = useRef(null)
-  const inputRef = useRef(null)
   const { currentAgent } = useApp()
+  const { value: query, inputProps: hookInputProps, clear: clearQuery, focusInput } = useMobileSearch(
+    (v) => triggerDebounce(v, filters),
+    400
+  )
 
-  // Foca o input quando autoFocus=true — funciona no mobile após mount
+  // Foca o input quando autoFocus=true
   useEffect(() => {
-    if (autoFocus && inputRef.current) {
-      // Delay necessário no iOS para garantir que o teclado abra após animação
-      const t = setTimeout(() => inputRef.current?.focus(), 80)
-      return () => clearTimeout(t)
-    }
-  }, [autoFocus])
+    if (autoFocus) focusInput(80)
+  }, [autoFocus, focusInput])
 
   useEffect(() => {
     api.getAgents().then(setAgents).catch(() => {})
   }, [])
+
+  const triggerDebounce = useCallback((q, f) => {
+    doSearch(q, f)
+  }, [])  // called from hook's debounce already
 
   const doSearch = useCallback(async (q, f) => {
     const hasQuery = q.trim().length > 0
@@ -54,15 +56,15 @@ export default function SearchBar({ onResults, onClear, autoFocus = false }) {
     finally { setSearching(false) }
   }, [currentAgent, onResults, onClear])
 
+  // Re-search when filters change (query already triggers via hook)
   useEffect(() => {
-    clearTimeout(debounceRef.current)
-    // 400ms no mobile é mais seguro para aguardar composição de texto (IME, autocorrect)
-    debounceRef.current = setTimeout(() => doSearch(query, filters), 400)
-    return () => clearTimeout(debounceRef.current)
-  }, [query, filters, doSearch])
+    if (filters.column || filters.assignee || filters.product) {
+      doSearch(query, filters)
+    }
+  }, [filters])
 
   const clear = () => {
-    setQuery('')
+    clearQuery()
     setFilters({ column: '', assignee: '', product: '' })
     onClear?.()
   }
@@ -77,29 +79,15 @@ export default function SearchBar({ onResults, onClear, autoFocus = false }) {
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onInput={e => {
-              // Fallback para iOS Safari que às vezes não dispara onChange corretamente
-              const val = e.currentTarget.value
-              if (val !== query) setQuery(val)
-            }}
+            {...hookInputProps}
             placeholder="Buscar por nome, telefone..."
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            inputMode="search"
-            enterKeyHint="search"
             className="w-full pl-8 pr-8 py-2 rounded-xl text-sm transition-all"
             style={{
+              ...hookInputProps.style,
               backgroundColor: 'var(--bg-card)',
               border: `1px solid ${hasActive ? 'rgba(59,130,246,0.5)' : 'var(--border)'}`,
               color: 'var(--text-primary)',
               outline: 'none',
-              WebkitAppearance: 'none',  // remove estilo nativo de search no Safari
             }}
           />
           {(searching) && (

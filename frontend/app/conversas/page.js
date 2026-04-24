@@ -1,4 +1,5 @@
 'use client'
+import { useMobileSearch } from '../../lib/useMobileSearch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { persistentCache } from '../../lib/persistentCache'
@@ -115,7 +116,8 @@ function ConversasList() {
   const [tab, setTab] = useState('nao_lidas')
   const [allLeads, setAllLeads] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearchVal] = useState('')
+  const { inputProps: searchInputProps } = useMobileSearch((v) => setSearchVal(v))
   const { selectedLead, setSelectedLead, unreadCounts, currentAgent, unreadUpdatedAt } = useApp()
 
   const load = useCallback(async (force = false) => {
@@ -222,10 +224,12 @@ function ConversasList() {
         {/* Busca */}
         <div className="relative mb-3">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
+          <input
+            {...searchInputProps}
             placeholder="Buscar conversa..."
             className="w-full pl-8 pr-3 py-2 rounded-xl text-sm"
             style={{
+              ...searchInputProps.style,
               backgroundColor: 'var(--bg-hover)', border: '1px solid var(--border)',
               color: 'var(--text-primary)', outline: 'none', fontSize: '14px'
             }} />
