@@ -1580,7 +1580,7 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="flex flex-col bg-[var(--bg-secondary)] relative animate-slide-in-right" style={{ height: "100%", maxHeight: "100dvh" }}>
+    <div className="flex flex-col bg-[var(--bg-secondary)] relative animate-slide-in-right" style={{ height: "100%", overflow: "hidden" }}>
       {/* Toast */}
       {moveToast && (
         <div className="absolute top-3 left-3 right-3 z-50 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium animate-slide-up shadow-lg"
@@ -1733,8 +1733,15 @@ export default function ChatPanel() {
       )}
 
       {/* ── Área de input ── */}
-      <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0"
-        style={{ position: "sticky", bottom: 0, zIndex: 10, backgroundColor: "var(--bg-secondary)", paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }}>
+      <div className="flex-shrink-0 border-t border-[var(--border)]"
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 10,
+          backgroundColor: 'var(--bg-secondary)',
+          padding: '10px 12px',
+          paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+        }}>
         {/* Gravando */}
         {recordingMode && (
           <RecordingBar

@@ -905,9 +905,14 @@ app.get('/api/inbox', async (req, res) => {
     const { agentId, role } = req.query
     let all = await getAllConversations()
 
-    // Filtro por vendedor
+    // Remove conversas resolvidas da aba Conversas
+    all = all.filter(c => c.status !== 'resolved')
+
+    // Filtro por vendedor — cast numérico garante comparação correta
     if (role === 'vendedor' && agentId) {
-      all = all.filter(c => c.assignedTo === agentId)
+      const aid = Number(agentId)
+      all = all.filter(c => Number(c.assignedTo) === aid)
+      console.log(`[Inbox] Vendedor ${agentId} → ${all.length} conversas atribuídas`)
     }
 
     // Ordena: não lidas → lastMessageAt mais recente

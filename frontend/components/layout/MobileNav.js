@@ -106,9 +106,16 @@ export default function MobileNav() {
       {/* ── Drawer direito ── */}
       <div ref={drawerRef}
         className={`fixed top-0 right-0 bottom-0 z-50 w-72 flex flex-col transition-transform duration-300 ease-in-out ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
-        style={{ background: 'rgba(6,12,24,0.97)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', borderLeft: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{
+          background: theme === 'dark' ? 'rgba(6,12,24,0.97)' : 'rgba(248,250,252,0.97)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderLeft: theme === 'dark' ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}>
 
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5"
+        <div className="flex items-center justify-between px-5 py-4 border-b"
+          style={{ borderColor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' }}
           style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg" style={{ boxShadow: '0 0 12px rgba(59,130,246,0.4)' }}>
@@ -117,7 +124,8 @@ export default function MobileNav() {
             <span className="text-white font-bold">T-CRM</span>
           </div>
           <button onClick={() => setDrawerOpen(false)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/5">
+            className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
+            style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
             <X size={18} />
           </button>
         </div>
@@ -128,7 +136,9 @@ export default function MobileNav() {
             return (
               <button key={href} onClick={() => handleDrawerNav(href)}
                 className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all text-left active:scale-[0.97] active:bg-white/5"
-                style={active ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#60a5fa' } : { color: 'rgba(255,255,255,0.65)' }}>
+                style={active
+                  ? { backgroundColor: 'rgba(59,130,246,0.15)', color: '#3b82f6' }
+                  : { color: theme === 'dark' ? 'rgba(255,255,255,0.65)' : '#475569' }}>
                 <Icon size={20} className="flex-shrink-0" />
                 <span className="font-medium text-base">{label}</span>
                 {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
@@ -139,18 +149,18 @@ export default function MobileNav() {
 
         <div className="px-3 py-3 border-t border-white/5 space-y-1">
           <button onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-black/5 dark:hover:bg-white/5"
             style={{ color: 'rgba(255,255,255,0.5)' }}>
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             <span className="text-sm">{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>
           </button>
           {currentAgent && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}>
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                 {currentAgent.avatar}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>{currentAgent.name}</p>
+                <p className="text-sm font-semibold truncate" style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.85)' : '#1e293b' }}>{currentAgent.name}</p>
                 <p className="text-xs" style={{ color: currentAgent.role === 'supervisor' ? '#60a5fa' : '#34d399' }}>
                   {currentAgent.role === 'supervisor' ? 'Supervisor' : 'Vendedor'}
                 </p>
@@ -167,10 +177,10 @@ export default function MobileNav() {
       {/* ── Bottom Tab Bar ── */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center"
         style={{
-          background: 'rgba(6,12,24,0.96)',
+          background: theme === 'dark' ? 'rgba(6,12,24,0.96)' : 'rgba(248,250,252,0.96)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          borderTop: theme === 'dark' ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           height: 'calc(56px + env(safe-area-inset-bottom, 0px))',
         }}>
@@ -178,7 +188,7 @@ export default function MobileNav() {
           const active = href !== '#menu' && (pathname === href || pathname.startsWith(href + '/'))
           const menuActive = href === '#menu' && drawerOpen
           const badge = badgeKey ? badges[badgeKey] || 0 : 0
-          const color = (active || menuActive) ? '#60a5fa' : 'rgba(255,255,255,0.4)'
+          const color = (active || menuActive) ? '#3b82f6' : (theme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)')
 
           return (
             <button key={href} onClick={() => handleTab(href)}
