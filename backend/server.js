@@ -244,9 +244,16 @@ async function getAllConversations() {
     // (mas é contabilizado no dashboard)
     if ((conv.labels || []).some(l => l.toLowerCase() === 'cancelado')) return true
 
-    // 5. Conversa com status "resolved" — sempre oculta do Kanban
-    if (conv.status === 'resolved') return true
-    // 5b. Conversa marcada como resolvida no store local (antes do Chatwoot atualizar)
+    // 5. Conversa com status "resolved"
+    if (conv.status === 'resolved') {
+      const storeCol = store.getColumn(String(conv.id))
+      // Exceção: se foi reaberta pelo T-CRM (agendado, moved etc), manter no kanban
+      // O store tem a coluna atualizada mesmo que o Chatwoot ainda diga "resolved"
+      const reopenedCols = new Set(['agendado','negociacao','leads','aguardando_cotacao','lancar_venda','aguardando_pagamento'])
+      if (storeCol && reopenedCols.has(storeCol)) return false  // NÃO descarta
+      return true  // descarta se não foi reaberto
+    }
+    // 5b. Marcada como resolvida no store local
     if (store.getColumn(String(conv.id)) === '__resolved__') return true
 
     return false
@@ -482,22 +489,23 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
   try {
     const { id } = req.params
     const { scheduledAt, observacao } = req.body
+    // Marca como 'agendado' no store E remove flag __resolved__ se existia
     store.setColumn(id, 'agendado')
-    store.setMeta(id, { scheduledAt, observacao: observacao || '' })
+    store.setMeta(id, { scheduledAt, observacao: observacao || '', status: 'open' })
     store.invalidateCache()
-    // Persiste coluna + scheduledAt + reabre lead resolvido no Supabase
+    // Persiste no Supabase — status:'open' reabre lead finalizado
     if (db.DB_READY()) {
       db.updateMeta(id, {
         column:      'agendado',
-        status:      'open',           // ← reabre lead resolvido/finalizado
+        status:      'open',
         scheduledAt: scheduledAt || null,
         observacao:  observacao || '',
       }).catch(() => {})
     }
-    // Reabre conversa no Chatwoot se estava resolvida
+    // Reabre no Chatwoot (assíncrono, não bloqueia resposta)
     if (CHATWOOT_READY) {
-      cw.setKanbanLabel(id, 'agendado').catch(e => console.warn(e.message))
-      cw.reopenConversation(id).catch(() => {})  // garante status=open no Chatwoot
+      cw.setKanbanLabel(id, 'agendado').catch(() => {})
+      cw.reopenConversation(id).catch(() => {})
     }
     io.emit('lead_moved', { id, column: 'agendado', scheduledAt })
     res.json({ id, column: 'agendado', scheduledAt, observacao })
@@ -1499,9 +1507,13 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     if (newColumn && newColumn !== currentCol) {
       store.setColumn(convId, newColumn)
       store.invalidateCache()
-      // Persiste nova coluna no Supabase (sem isso o card some no reload)
+      // Persiste nova coluna E reabre se estava resolvido
       if (db.DB_READY()) {
-        db.updateMeta(convId, { column: newColumn }).catch(() => {})
+        db.updateMeta(convId, { column: newColumn, status: 'open' }).catch(() => {})
+      }
+      // Reabre no Chatwoot se estava resolvido (label mudou = intenção de retomar)
+      if (CHATWOOT_READY && data.status === 'resolved') {
+        cw.reopenConversation(convId).catch(() => {})
       }
       // Busca lead completo para emitir com dados atualizados
       let leadData = null
