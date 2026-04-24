@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useApp } from '../../contexts/AppContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { api } from '../../lib/api'
+import { usePush } from '../../lib/usePush'
 import {
   KanbanSquare, MessageCircle, Calendar, DollarSign, Menu,
   X, Sun, Moon, LogOut, LayoutDashboard, Users
