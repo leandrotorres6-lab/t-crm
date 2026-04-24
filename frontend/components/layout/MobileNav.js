@@ -35,6 +35,7 @@ export default function MobileNav() {
   const { theme, toggleTheme } = useTheme()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [badges, setBadges]         = useState({ unread: 0, agendamento: 0, pagamento: 0 })
+  const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
   const drawerRef = useRef(null)
 
   const isDark = theme === 'dark'
@@ -155,6 +156,28 @@ export default function MobileNav() {
 
         {/* Footer */}
         <div className="px-3 pb-3 pt-2 space-y-1" style={{ borderTop: `1px solid ${T.divider}` }}>
+
+          {/* Push notifications */}
+          {supported && permission !== 'denied' && (
+            <button
+              onClick={subscribed ? unsubscribe : subscribe}
+              disabled={pushLoading}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
+              style={{ color: subscribed ? '#10b981' : (isDark ? '#64748b' : '#64748b') }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = T.navHoverBg}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+              <div className="relative flex-shrink-0">
+                {subscribed
+                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{opacity:0.4}}><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                }
+                {subscribed && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />}
+              </div>
+              <span className="text-sm font-medium" style={{ color: subscribed ? '#10b981' : T.themeText }}>
+                {pushLoading ? 'Aguarde...' : subscribed ? 'Notificações ativas' : 'Ativar notificações'}
+              </span>
+            </button>
+          )}
 
           {/* Botão de tema — cores corretas em ambos os modos */}
           <button onClick={toggleTheme}
