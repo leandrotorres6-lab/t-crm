@@ -93,8 +93,8 @@ export default function AgendamentoPage() {
     // Escuta agendamentos criados em tempo real
     const handler = (e) => {
       const { lead, scheduledAt, id } = e.detail || {}
-      if (!lead && !scheduledAt) return
-      setAll(prev => {
+      if (!scheduledAt) return
+      setAgendados(prev => {
         const exists = prev.find(l => String(l.id) === String(id))
         const entry = lead ? { ...lead, scheduledAt } : { id, scheduledAt }
         if (exists) return prev.map(l => String(l.id) === String(id) ? { ...l, scheduledAt } : l)

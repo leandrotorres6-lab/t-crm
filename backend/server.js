@@ -582,8 +582,10 @@ app.get('/api/pagamentos', async (req, res) => {
   try {
     if (db.DB_READY()) {
       const all = await db.getAll()
-      // Lista todos com paymentDueDate preenchido, independente de coluna
-      const pagamentos = all.filter(c => c.paymentDueDate)
+      // Filtra por coluna aguardando_pagamento E com paymentDueDate preenchido
+      const pagamentos = all.filter(c =>
+        c.column === 'aguardando_pagamento' && c.paymentDueDate
+      )
       return res.json(pagamentos)
     }
     // Fallback: store em memória
@@ -594,7 +596,7 @@ app.get('/api/pagamentos', async (req, res) => {
         const meta = store.getMeta(c.id)
         return { ...c, paymentDueDate: meta.paymentDueDate || c.paymentDueDate || null, observacao: meta.observacao || c.observacao || '' }
       })
-      .filter(c => c.paymentDueDate)
+      .filter(c => c.column === 'aguardando_pagamento' && c.paymentDueDate)
     res.json(pagamentos)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
