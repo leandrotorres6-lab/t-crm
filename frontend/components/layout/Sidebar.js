@@ -181,7 +181,7 @@ export default function Sidebar({ mobileOverlay = false }) {
         {sidebarOpen && (
           <div className="flex items-center gap-2 animate-fade-in">
             <img src="/logo.png" alt="T-CRM" className="w-8 h-8 rounded-xl object-cover" style={{ boxShadow: '0 0 12px rgba(99,102,241,0.5)' }} />
-            <span className="font-bold tracking-tight" style={{ color: 'white', fontSize: mobileOverlay ? '17px' : '15px' }}>T-CRM</span>
+            <span className="font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', fontSize: mobileOverlay ? '17px' : '15px', letterSpacing: '-0.3px' }}>T-CRM</span>
           </div>
         )}
         {!sidebarOpen && (
