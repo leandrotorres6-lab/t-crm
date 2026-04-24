@@ -23,10 +23,33 @@ export default function PaymentModal({ onConfirm }) {
       const paymentDueDate = new Date(`${date}T23:59:00`).toISOString()
       await api.setPaymentDue(lead.id, paymentDueDate, observacao)
       const updated = { ...lead, paymentDueDate, observacao, column: 'aguardando_pagamento' }
-      // Atualiza o lead selecionado na conversa se for o mesmo
+
+      // Atualiza lead selecionado se for o mesmo
       if (selectedLead && String(selectedLead.id) === String(lead.id)) {
         setSelectedLead(updated)
       }
+
+      // Eventos globais — funcionam independente de qual tela abriu o modal
+      if (typeof window !== 'undefined') {
+        // Move o card no Kanban
+        window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+          detail: {
+            leadId: String(lead.id),
+            fromCol: lead.column || null,
+            toCol:   'aguardando_pagamento',
+            leadData: updated,
+          }
+        }))
+        // Reload da coluna destino
+        window.dispatchEvent(new CustomEvent('tcrm:reload-column', {
+          detail: { column: 'aguardando_pagamento' }
+        }))
+        // Evento para a aba de Pagamentos atualizar
+        window.dispatchEvent(new CustomEvent('tcrm:payment-created', {
+          detail: { id: String(lead.id), paymentDueDate, observacao, lead: updated }
+        }))
+      }
+
       onConfirm && onConfirm(updated)
       setPaymentModal(null)
       setDate(''); setValor(''); setObservacao('')
