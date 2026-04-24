@@ -36,6 +36,7 @@ export default function SearchBar({ onResults, onClear }) {
       if (f.assignee) params.set('assignee', f.assignee)
       if (f.product) params.set('product', f.product)
       if (currentAgent?.role === 'vendedor') params.set('agentId', currentAgent.id)
+      if (currentAgent?.role) params.set('role', currentAgent.role)
 
       const data = await api.search(params.toString())
       onResults?.(data.results || [])

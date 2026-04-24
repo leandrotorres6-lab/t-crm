@@ -118,15 +118,21 @@ export function AppProvider({ children }) {
 
   useSocket('new_conversation', (lead) => {
     const id = String(lead.id)
+    // Dedup frontend — múltiplos eventos para a mesma conversation_id (ex: cliente envia 3 fotos)
+    if (processedConversations.current.has(id)) {
+      console.log(`[Socket] new_conversation DEDUP id=${id} — ignorado no frontend`)
+      return
+    }
+    processedConversations.current.add(id)
+    // Limpa após 30s para conversas que podem reabrir depois
+    setTimeout(() => processedConversations.current.delete(id), 30000)
+
     setUnreadCounts(prev => ({ ...prev, [id]: lead.unreadCount || 1 }))
     if (typeof window !== 'undefined') {
-      // Toast
       window.dispatchEvent(new CustomEvent('tcrm:toast', {
         detail: { text: `🆕 Novo lead: ${lead.name || 'Contato'}`, conversationId: id }
       }))
-      // Força KanbanColumn de leads a recarregar do backend
       window.dispatchEvent(new CustomEvent('tcrm:reload-column', { detail: { column: 'leads' } }))
-      // Som + vibração + popup
       playSound('lead')
       try { navigator.vibrate?.([100, 50, 100]) } catch {}
       showNotification('🆕 Novo lead', lead.name || 'Novo contato', { tag: `lead-${lead.id}` })

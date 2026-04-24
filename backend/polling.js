@@ -119,12 +119,18 @@ async function poll() {
         lastProcessedId.set(convId, lastId)
         alreadySeen(lastMsg?.id)
         const currentCol = deps.store.getColumn?.(convId)
-        // Se não tem coluna definida, trata como nova → leads
         const mapped = deps.mapConversation(conv, currentCol || 'leads')
         if (!currentCol) {
-          console.log(`[Poll] 🆕 Nova/reaberta conv=${convId} name="${mapped.name}" → leads`)
-          if (deps.db.DB_READY?.()) deps.db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
-          deps.io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+          // Dedup compartilhado com webhook — evita duplo card quando ambos detectam a mesma conversa
+          const dedupMap = deps.recentNewConversations
+          if (dedupMap?.has(convId)) {
+            console.log(`[Poll] new_conversation DEDUP conv=${convId} — webhook já emitiu`)
+          } else {
+            dedupMap?.set(convId, Date.now())
+            console.log(`[Poll] 🆕 Nova conv=${convId} name="${mapped.name}" → leads`)
+            if (deps.db.DB_READY?.()) deps.db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
+            deps.io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+          }
         }
         continue
       }

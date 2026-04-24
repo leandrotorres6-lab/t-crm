@@ -1021,38 +1021,49 @@ app.get('/api/dashboard', async (req, res) => {
 // ─── SEARCH ──────────────────────────────────────────────────────────────────
 app.get('/api/search', async (req, res) => {
   try {
-    const { q, column, assignee, product, agentId } = req.query
-    let all = await getAllConversations()
+    const { q, column, assignee, product, agentId, role } = req.query
+    const qTrim = (q || '').trim()
 
-    // Filtro por vendedor (se for agente)
-    if (agentId) all = all.filter(c => c.assignedTo === agentId)
+    // Normaliza telefone para busca (remove +55, espaços, traços, parênteses)
+    const normalizePhone = (s) => (s || '').replace(/[^0-9]/g, '')
+    const qPhone = normalizePhone(qTrim)
 
-    // Filtro por etapa
-    if (column) all = all.filter(c => c.column === column)
+    let results = []
 
-    // Filtro por vendedor (nome)
-    if (assignee) all = all.filter(c => (c.assigneeName || '').toLowerCase().includes(assignee.toLowerCase()))
+    // 1. Busca no Supabase (global, inclui conversas fora do cache/kanban)
+    if (db.DB_READY() && qTrim.length >= 2) {
+      const dbResults = await db.search({ q: qTrim, assignedTo: role === 'vendedor' ? agentId : null })
+      if (dbResults?.length) {
+        results = dbResults.map(r => ({ ...r, source: 'kanban' }))
+      }
+    }
 
-    // Filtro por produto
-    if (product) all = all.filter(c => (c.product || '').toLowerCase().includes(product.toLowerCase()))
-
-    // Busca textual
-    if (q && q.trim()) {
-      const terms = q.trim().toLowerCase().split(/\s+/)
-      all = all.filter(c => {
-        const text = [c.name, c.phone, c.lastMessage, c.product].join(' ').toLowerCase()
-        return terms.every(t => text.includes(t))
-      })
+    // 2. Fallback: busca no cache em memória (se Supabase não disponível ou resultado vazio)
+    if (results.length === 0) {
+      let all = await getAllConversations()
+      if (role === 'vendedor' && agentId) all = all.filter(c => Number(c.assignedTo) === Number(agentId))
+      if (column) all = all.filter(c => c.column === column)
+      if (assignee) all = all.filter(c => (c.assigneeName || '').toLowerCase().includes(assignee.toLowerCase()))
+      if (product) all = all.filter(c => (c.product || '').toLowerCase().includes(product.toLowerCase()))
+      if (qTrim) {
+        const terms = qTrim.toLowerCase().split(/\s+/)
+        all = all.filter(c => {
+          const text = [c.name, c.phone, normalizePhone(c.phone), c.lastMessage, c.product].join(' ').toLowerCase()
+          const phoneNorm = normalizePhone(c.phone || '')
+          return terms.every(t => text.includes(t) || (qPhone.length >= 4 && phoneNorm.includes(qPhone)))
+        })
+      }
+      results = all.map(r => ({ ...r, source: 'kanban' }))
     }
 
     // Ordena: não lidas → mais recentes
-    all.sort((a, b) => {
+    results.sort((a, b) => {
       const ua = a.unreadCount || 0, ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
-      return new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
+      return new Date(b.lastMessageAt || b.createdAt || 0) - new Date(a.lastMessageAt || a.createdAt || 0)
     })
 
-    res.json({ results: all.slice(0, 50), total: all.length })
+    res.json({ results: results.slice(0, 50), total: results.length })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1145,6 +1156,16 @@ app.delete('/api/push/unsubscribe', (req, res) => {
 // Set global de dedup para notificações (webhook + polling podem detectar a mesma msg)
 const notifiedMsgIds = new Set()
 setInterval(() => { if (notifiedMsgIds.size > 2000) notifiedMsgIds.clear() }, 60000)
+
+// Dedup para conversation_created — evita card duplo quando webhook dispara múltiplas vezes
+// (ex: cliente envia 3 fotos simultâneas → 3 eventos para a mesma conversation_id)
+const recentNewConversations = new Map() // conversationId → timestamp
+setInterval(() => {
+  const cutoff = Date.now() - 30000
+  for (const [id, ts] of recentNewConversations) {
+    if (ts < cutoff) recentNewConversations.delete(id)
+  }
+}, 30000)
 
 // IDs de agentes supervisores — recebem push de todas as conversas
 function isSupervisorAgent(agentId) {
@@ -1352,8 +1373,20 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     const conversationId = String(data.id)
     // Filtra inbox se configurado
     if (targetInboxId && data.inbox_id !== targetInboxId) return res.json({ ok: true })
+    // Dedup: ignora se já emitimos new_conversation para este conversation_id nos últimos 30s
+    if (recentNewConversations.has(conversationId)) {
+      console.log(`[Webhook] conversation_created DEDUP conv=${conversationId} — ignorado`)
+      return res.json({ ok: true })
+    }
+    recentNewConversations.set(conversationId, Date.now())
     store.setColumn(conversationId, 'leads')
     store.invalidateCache()
+    // Persiste no Supabase
+    if (db.DB_READY()) {
+      const mapped = cw.mapConversation(data, 'leads')
+      db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
+    }
+    console.log(`[Webhook] ✅ new_conversation conv=${conversationId}`)
     io.emit('new_conversation', cw.mapConversation(data, 'leads'))
   }
 
@@ -1478,6 +1511,7 @@ server.listen(PORT, async () => {
         mapMessage: cw.mapMessage,
         mapConversation: cw.mapConversation,
         notifyInbound,  // push redundante via polling quando webhook falha
+        recentNewConversations,  // dedup compartilhado webhook↔polling
       })
     })
     .catch(e => console.warn('⚠️  Pré-carga falhou:', e.message))
