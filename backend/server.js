@@ -1554,19 +1554,29 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
 app.get('/api/users', (req, res) => res.json(require('./data/mockData').users))
 
 // ─── CRON DE AGENDAMENTOS ────────────────────────────────────────────────────
-// Roda a cada 60s no backend — independente do frontend estar aberto
-// Garante notificação mesmo com browser fechado (push via Service Worker)
+// Dedup em memória: chave = `${leadId}_${scheduledAt}`
+// Limpa a cada 2h para não acumular indefinidamente
+const cronNotifiedSet = new Set()
+setInterval(() => cronNotifiedSet.clear(), 2 * 60 * 60 * 1000)
+
 async function runScheduleCron() {
   if (!db.DB_READY()) return
   try {
     const due = await db.getScheduledDue()
     if (!due.length) return
 
-    console.log(`[Cron] ${due.length} agendamento(s) para notificar`)
+    const fresh = due.filter(l => {
+      const key = `${l.id}_${l.scheduledAt}`
+      return !cronNotifiedSet.has(key)
+    })
+    if (!fresh.length) return
 
-    for (const lead of due) {
-      // Marca como notificado ANTES de enviar (evita duplicação em caso de erro)
-      await db.markScheduleNotified(lead.id).catch(() => {})
+    console.log(`[Cron] ${fresh.length} agendamento(s) para notificar`)
+
+    for (const lead of fresh) {
+      // Marca no Set ANTES de enviar (dedup em memória)
+      const key = `${lead.id}_${lead.scheduledAt}`
+      cronNotifiedSet.add(key)
 
       const title = `🔔 Contato agora: ${lead.name}`
       const body  = lead.observacao || `Tel: ${lead.phone}`

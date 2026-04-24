@@ -315,28 +315,24 @@ async function getLeadById(id) {
 // Busca agendamentos que devem disparar agora (janela ±5min, não notificados ainda)
 async function getScheduledDue() {
   if (!DB_READY) return []
-  const now    = new Date()
-  const start  = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
-  const end    = new Date(now.getTime() + 60 * 1000).toISOString()  // 1 min à frente
+  const now   = new Date()
+  const start = new Date(now.getTime() - 5 * 60 * 1000).toISOString()  // 5 min atrás
+  const end   = new Date(now.getTime() + 60 * 1000).toISOString()      // 1 min à frente
+  // Busca leads com scheduled_at dentro da janela
+  // Não depende de coluna schedule_notified_at — dedup feito no cron via Set em memória
   const { data, error } = await supabase
     .from('leads')
     .select('*')
     .not('scheduled_at', 'is', null)
     .gte('scheduled_at', start)
     .lte('scheduled_at', end)
-    .or('schedule_notified_at.is.null,schedule_notified_at.lt.' + start)  // não notificado ou antiga
   if (error) { console.error('[DB] getScheduledDue error:', error.message); return [] }
   return (data || []).map(fromRow)
 }
 
-// Marca lead como notificado para não disparar novamente
+// Stub mantido por compatibilidade — dedup agora é feito pelo cron em memória
 async function markScheduleNotified(id) {
-  if (!DB_READY) return
-  const { error } = await supabase
-    .from('leads')
-    .update({ schedule_notified_at: new Date().toISOString() })
-    .eq('id', String(id))
-  if (error) console.error('[DB] markScheduleNotified error:', error.message)
+  // dedup via Set no cron — não precisa de coluna no banco
 }
 
 async function deletePushSubscription(agentId) {
