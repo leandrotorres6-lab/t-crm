@@ -67,7 +67,7 @@ export const api = {
   setConversationLabels: (id, labels) => fetchJSON(`/conversations/${id}/labels`, { method: 'POST', body: JSON.stringify({ labels }) }),
   markAsRead: (id) => fetchJSON(`/conversations/${id}/read`, { method: 'POST' }),
 
-  getContacts: (page = 1, search = '') => fetchJSON(`/contacts?page=${page}&search=${encodeURIComponent(search)}`),
+  getContacts: (q = '', page = 1) => fetchJSON(`/contacts?q=${encodeURIComponent(q)}&page=${page}`),
   getContactConversations: (contactId) => fetchJSON(`/contacts/${contactId}/conversations`),
 
   getScheduled: (agentId, role) => fetchJSON(`/agendamentos${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),
