@@ -326,18 +326,29 @@ export default function KanbanBoard() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {searchResults.map(lead => {
-                const color = {'leads':'#3b82f6','negociacao':'#8b5cf6','aguardando_cotacao':'#f59e0b','agendado':'#06b6d4','lancar_venda':'#10b981','aguardando_pagamento':'#f97316','pago':'#22c55e','sem_retorno':'#6b7280'}[lead.column] || '#6b7280'
-                const colLabel = {'leads':'Leads','negociacao':'Negociação','aguardando_cotacao':'Ag. Cotação','agendado':'Agendado','lancar_venda':'Lançar Venda','aguardando_pagamento':'Ag. Pgto','pago':'Pago ✓','sem_retorno':'Sem Retorno'}[lead.column] || lead.column
+                const COL_COLORS = {'leads':'#3b82f6','negociacao':'#8b5cf6','aguardando_cotacao':'#f59e0b','agendado':'#06b6d4','lancar_venda':'#10b981','aguardando_pagamento':'#f97316','pago':'#22c55e','sem_retorno':'#6b7280'}
+                const COL_LABELS = {'leads':'Leads','negociacao':'Negociação','aguardando_cotacao':'Ag. Cotação','agendado':'Agendado','lancar_venda':'Lançar Venda','aguardando_pagamento':'Ag. Pgto','pago':'Pago ✓','sem_retorno':'Sem Retorno'}
+                const isResolved = lead.source === 'chatwoot' || lead.status === 'resolved' || !lead.column
+                const color = isResolved ? '#6b7280' : (COL_COLORS[lead.column] || '#6b7280')
+                const colLabel = isResolved
+                  ? (lead.source === 'contact' ? 'Contato' : '✓ Finalizado')
+                  : (COL_LABELS[lead.column] || lead.column)
+                // Ao clicar em resultado resolvido/chatwoot: usa chatwootData se disponível
+                const handleClick = () => {
+                  const toOpen = lead.chatwootData || lead
+                  setSelectedLead({ ...toOpen, column: toOpen.column || 'leads' })
+                }
                 return (
-                  <div key={lead.id} onClick={() => setSelectedLead(lead)} className="p-3 rounded-xl cursor-pointer hover:scale-[1.02] transition-all"
-                    style={{ backgroundColor: 'var(--bg-card)', border: `1px solid var(--border)`, borderLeft: `3px solid ${color}` }}>
+                  <div key={lead.id} onClick={handleClick}
+                    className="p-3 rounded-xl cursor-pointer hover:scale-[1.02] transition-all"
+                    style={{ backgroundColor: 'var(--bg-card)', border: `1px solid var(--border)`, borderLeft: `3px solid ${color}`, opacity: isResolved ? 0.85 : 1 }}>
                     <div className="flex items-center gap-2 mb-1.5">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: color+'20', color }}>
-                        {lead.avatar}
+                        {lead.avatar || (lead.name || '?').slice(0,2).toUpperCase()}
                       </div>
-                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{lead.name}</p>
+                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate flex-1">{lead.name}</p>
                     </div>
-                    <p className="text-xs text-[var(--text-muted)] truncate mb-1.5">{lead.lastMessage}</p>
+                    <p className="text-xs text-[var(--text-muted)] truncate mb-1.5">{lead.phone || lead.lastMessage || ''}</p>
                     <span className="text-xs px-1.5 py-0.5 rounded-md font-medium" style={{ backgroundColor: color+'15', color, fontSize:'10px' }}>{colLabel}</span>
                   </div>
                 )

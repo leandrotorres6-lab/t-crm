@@ -223,6 +223,22 @@ async function resetUnread(id) {
 }
 
 // ── Busca textual ─────────────────────────────────────────────────────────────
+// Busca SEM filtro de status — inclui leads resolvidos/finalizados (para busca global)
+async function searchAll({ q, assignedTo } = {}) {
+  if (!DB_READY) return []
+  const qPhone = (q || '').replace(/[^0-9]/g, '')
+  let query = supabase.from('leads').select('*').limit(20)
+  if (assignedTo) query = query.eq('assigned_to', Number(assignedTo))
+  if (q && q.trim().length >= 2) {
+    const orParts = [`name.ilike.%${q}%`, `phone.ilike.%${q}%`]
+    if (qPhone.length >= 4) orParts.push(`phone.ilike.%${qPhone}%`)
+    query = query.or(orParts.join(','))
+  }
+  const { data, error } = await query.order('updated_at', { ascending: false })
+  if (error) { console.error('[DB] searchAll error:', error.message); return [] }
+  return (data || []).map(fromRow)
+}
+
 async function search({ q, kanbanColumn, assigneeName, product, assignedTo } = {}) {
   if (!DB_READY) return null
   let query = supabase.from('leads').select('*').eq('status', 'open')
@@ -310,4 +326,4 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta }
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta }
