@@ -76,14 +76,7 @@ export const api = {
   updatePaymentDate: (id, date) => fetchJSON(`/kanban/${id}/payment`, { method: 'PATCH', body: JSON.stringify({ paymentDueDate: date }) }),
 
   getInbox: (agentId, role) => fetchJSON(`/inbox${agentId ? `?agentId=${agentId}&role=${role}` : ''}`),
-  getDashboard: (days = 0) => {
-    if (days > 0) {
-      const to = new Date().toISOString().split('T')[0]
-      const from = new Date(Date.now() - days * 86400000).toISOString().split('T')[0]
-      return fetchJSON(`/dashboard?from=${from}&to=${to}`)
-    }
-    return fetchJSON('/dashboard')
-  },
+  getDashboard: (days = 0, customUrl = null) => fetchJSON(customUrl || (days > 0 ? `/dashboard?days=${days}` : '/dashboard')),
   search: (params) => fetchJSON(`/search?${params}`),
 
   // Avatar

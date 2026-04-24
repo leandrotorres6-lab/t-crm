@@ -83,6 +83,7 @@ function fromRow(row) {
     scheduleNotifiedAt: row.schedule_notified_at,
     paymentDueDate: row.payment_due_date,
     observacao: row.observacao,
+    contractValue: row.contract_value || null,
   }
 }
 
@@ -104,6 +105,7 @@ async function updateMeta(id, fields) {
   if (fields.scheduledAt !== undefined)    row.scheduled_at      = fields.scheduledAt
   if (fields.paymentDueDate !== undefined) row.payment_due_date  = fields.paymentDueDate
   if (fields.observacao !== undefined)     row.observacao        = fields.observacao
+  if (fields.contractValue !== undefined)  row.contract_value    = fields.contractValue
   if (fields.status !== undefined)         row.status            = fields.status
   if (fields.assignedTo !== undefined)     row.assigned_to       = fields.assignedTo ? Number(fields.assignedTo) : null
   if (fields.assigneeName !== undefined)   row.assignee_name     = fields.assigneeName
@@ -335,6 +337,17 @@ async function markScheduleNotified(id) {
   // dedup via Set no cron — não precisa de coluna no banco
 }
 
+// Dashboard: agrega dados direto do Supabase por período (mais preciso que cache)
+async function getDashboardStats({ start, end } = {}) {
+  if (!DB_READY) return null
+  let query = supabase.from('leads').select('*')
+  if (start) query = query.gte('created_at', start + 'T00:00:00')
+  if (end)   query = query.lte('created_at', end + 'T23:59:59')
+  const { data, error } = await query
+  if (error) { console.error('[DB] getDashboardStats error:', error.message); return null }
+  return (data || []).map(fromRow)
+}
+
 async function deletePushSubscription(agentId) {
   if (!DB_READY) return
   await supabase.from('push_subscriptions').delete().eq('agent_id', String(agentId))
@@ -350,4 +363,4 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified }
+module.exports = { init, DB_READY: () => DB_READY, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified, getDashboardStats }

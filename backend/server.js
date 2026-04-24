@@ -950,90 +950,122 @@ app.get('/api/inbox', async (req, res) => {
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const { from, to } = req.query
-    const all = await getAllConversations()
+    const { from, to, days } = req.query
     const now = new Date()
 
-    // Filtra por período se informado
-    const inPeriod = (conv) => {
-      if (!from && !to) return true
-      const d = new Date(conv.createdAt)
-      if (from && d < new Date(from + 'T00:00:00')) return false
-      if (to && d > new Date(to + 'T23:59:59')) return false
-      return true
-    }
-    const period = all.filter(inPeriod)
-
-    // Cancelados: leads com label 'cancelado' — excluídos do kanban mas contabilizados
-    const cancelados = all.filter(c => (c.labels || []).some(l => l.toLowerCase() === 'cancelado'))
-
-    // Stats do kanban (sem cancelados)
-    const stats = ALL_COLUMNS.map(col => ({
-      column: col,
-      label: { leads:'Leads', negociacao:'Negociação', aguardando_cotacao:'Ag. Cotação',
-        agendado:'Agendado', lancar_venda:'Lançar Venda', aguardando_pagamento:'Ag. Pgto',
-        pago:'Pago', sem_retorno:'Sem Retorno' }[col] || col,
-      count: period.filter(c => c.column === col).length,
-    }))
-
-    // Summary
-    const summary = {
-      totalLeads: period.length,
-      emNegociacao: period.filter(c => c.column === 'negociacao').length,
-      aguardandoPagamento: period.filter(c => c.column === 'aguardando_pagamento').length,
-      pagos: period.filter(c => c.column === 'pago').length,
-      cancelados: cancelados.filter(inPeriod).length,
-      perdidos: period.filter(c => c.column === 'sem_retorno').length,
-    }
-
-    // Gráfico mensal de leads / ag. pagamento / pagos / cancelados
-    const monthlyData = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-      const next = new Date(d.getFullYear(), d.getMonth() + 1, 1)
-      const month = d.toLocaleDateString('pt-BR', { month: 'short' })
-      const ml = all.filter(c => { const cr = new Date(c.createdAt); return cr >= d && cr < next })
-      return {
-        month: month.charAt(0).toUpperCase() + month.slice(1),
-        leads: ml.length,
-        aguardando_pagamento: ml.filter(c => c.column === 'aguardando_pagamento').length,
-        pagos: ml.filter(c => c.column === 'pago').length,
-        cancelados: ml.filter(c => (c.labels||[]).some(l=>l.toLowerCase()==='cancelado')).length,
+    // Define período (padrão: últimos 30 dias)
+    let startDate = from
+    let endDate   = to
+    if (!startDate) {
+      const d = parseInt(days) || 30
+      if (d > 0) {
+        const s = new Date(now)
+        s.setDate(s.getDate() - d)
+        startDate = s.toISOString().split('T')[0]
       }
+    }
+    if (!endDate) endDate = now.toISOString().split('T')[0]
+
+    // Usa Supabase diretamente para ter contract_value e dados precisos
+    let period = []
+    if (db.DB_READY()) {
+      const rows = await db.getDashboardStats({ start: startDate, end: endDate })
+      if (rows) period = rows
+    }
+
+    // Fallback: cache em memória
+    if (!period.length) {
+      const all = await getAllConversations()
+      period = all.filter(c => {
+        if (!startDate && !endDate) return true
+        const d = new Date(c.createdAt)
+        if (startDate && d < new Date(startDate + 'T00:00:00')) return false
+        if (endDate   && d > new Date(endDate   + 'T23:59:59')) return false
+        return true
+      })
+    }
+
+    const isCanceled = c => (c.labels || []).some(l => l.toLowerCase() === 'cancelado')
+    const pagos = period.filter(c => c.column === 'pago')
+
+    // ── KPIs ──────────────────────────────────────────────────────────────────
+    const totalVendido = pagos.reduce((s, c) => s + (Number(c.contractValue) || 0), 0)
+    const summary = {
+      totalLeads:          period.length,
+      emNegociacao:        period.filter(c => c.column === 'negociacao').length,
+      aguardandoPagamento: period.filter(c => c.column === 'aguardando_pagamento').length,
+      pagos:               pagos.length,
+      cancelados:          period.filter(isCanceled).length,
+      perdidos:            period.filter(c => c.column === 'sem_retorno').length,
+      totalVendido,
+    }
+
+    // ── FUNIL ────────────────────────────────────────────────────────────────
+    const total = period.length || 1
+    const funnelStages = [
+      { stage: 'Leads',       column: 'leads',                color: '#3b82f6' },
+      { stage: 'Negociação',  column: 'negociacao',           color: '#8b5cf6' },
+      { stage: 'Ag. Cotação', column: 'aguardando_cotacao',   color: '#f59e0b' },
+      { stage: 'Agendado',    column: 'agendado',             color: '#06b6d4' },
+      { stage: 'Ag. Pgto',   column: 'aguardando_pagamento', color: '#f97316' },
+      { stage: 'Pago',        column: 'pago',                 color: '#22c55e' },
+    ]
+    const funnel = funnelStages.map(s => {
+      const count = period.filter(c => c.column === s.column).length
+      const valor = s.column === 'pago'
+        ? period.filter(c => c.column === s.column).reduce((acc, c) => acc + (Number(c.contractValue) || 0), 0)
+        : null
+      return { ...s, count, pct: Math.round((count / total) * 100), valor }
     })
 
-    // Ranking de vendedores
+    // ── GRÁFICO DIÁRIO (período filtrado) ─────────────────────────────────────
+    const dayMap = {}
+    period.forEach(c => {
+      const day = (c.createdAt || '').split('T')[0]
+      if (!day) return
+      if (!dayMap[day]) dayMap[day] = { date: day, leads: 0, aguardando: 0, pagos: 0, cancelados: 0, valor: 0 }
+      dayMap[day].leads++
+      if (c.column === 'aguardando_pagamento') dayMap[day].aguardando++
+      if (c.column === 'pago') { dayMap[day].pagos++; dayMap[day].valor += Number(c.contractValue) || 0 }
+      if (isCanceled(c)) dayMap[day].cancelados++
+    })
+    const chartData = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date))
+
+    // Fallback: agrupa por semana se período > 60 dias (evita gráfico muito denso)
+    const monthlyData = chartData.length > 60
+      ? (() => {
+          const wMap = {}
+          chartData.forEach(d => {
+            const dt = new Date(d.date)
+            const wk = `${dt.getFullYear()}-W${String(Math.ceil(dt.getDate() / 7)).padStart(2,'0')}`
+            if (!wMap[wk]) wMap[wk] = { month: d.date.slice(5,10), leads: 0, pagos: 0, aguardando: 0, valor: 0 }
+            wMap[wk].leads     += d.leads
+            wMap[wk].pagos     += d.pagos
+            wMap[wk].aguardando += d.aguardando
+            wMap[wk].valor     += d.valor
+          })
+          return Object.values(wMap)
+        })()
+      : chartData.map(d => ({ month: d.date.slice(5,10), leads: d.leads, pagos: d.pagos, aguardando: d.aguardando, valor: d.valor }))
+
+    // ── RANKING ───────────────────────────────────────────────────────────────
     const agentMap = {}
-    period.forEach(conv => {
-      const name = conv.assigneeName || 'Não atribuído'
-      if (!agentMap[name]) agentMap[name] = { name, leads: 0, pagos: 0, cancelados: 0, aguardando: 0 }
+    period.forEach(c => {
+      const name = c.assigneeName || 'Sem vendedor'
+      if (name === 'Sem vendedor') return
+      if (!agentMap[name]) agentMap[name] = { name, leads: 0, pagos: 0, aguardando: 0, cancelados: 0, totalVendido: 0 }
       agentMap[name].leads++
-      if (conv.column === 'pago') agentMap[name].pagos++
-      if (conv.column === 'aguardando_pagamento') agentMap[name].aguardando++
-      if ((conv.labels||[]).some(l=>l.toLowerCase()==='cancelado')) agentMap[name].cancelados++
+      if (c.column === 'pago')                 { agentMap[name].pagos++;     agentMap[name].totalVendido += Number(c.contractValue) || 0 }
+      if (c.column === 'aguardando_pagamento')   agentMap[name].aguardando++
+      if (isCanceled(c))                         agentMap[name].cancelados++
     })
     const ranking = Object.values(agentMap)
-      .filter(a => a.name !== 'Não atribuído')
-      .map(a => ({
-        ...a,
-        conversao: a.leads > 0 ? Math.round((a.pagos / a.leads) * 100) : 0
-      }))
-      .sort((a, b) => b.pagos - a.pagos || b.conversao - a.conversao)
+      .map(a => ({ ...a, conversao: a.leads > 0 ? Math.round((a.pagos / a.leads) * 100) : 0 }))
+      .sort((a, b) => b.totalVendido - a.totalVendido || b.pagos - a.pagos)
 
-    // Funil de conversão
-    const total = period.length || 1
-    const funnel = [
-      { stage: 'Leads', count: period.filter(c => c.column === 'leads').length, color: '#3b82f6' },
-      { stage: 'Negociação', count: period.filter(c => c.column === 'negociacao').length, color: '#8b5cf6' },
-      { stage: 'Ag. Cotação', count: period.filter(c => c.column === 'aguardando_cotacao').length, color: '#f59e0b' },
-      { stage: 'Agendado', count: period.filter(c => c.column === 'agendado').length, color: '#06b6d4' },
-      { stage: 'Ag. Pgto', count: period.filter(c => c.column === 'aguardando_pagamento').length, color: '#f97316' },
-      { stage: 'Pago', count: period.filter(c => c.column === 'pago').length, color: '#22c55e' },
-    ].map(s => ({ ...s, pct: Math.round((s.count / total) * 100) }))
+    const convRate = total > 0 ? Math.round((pagos.length / total) * 100) : 0
 
-    // Taxa de conversão geral
-    const convRate = total > 0 ? Math.round((period.filter(c => c.column === 'pago').length / total) * 100) : 0
-
-    res.json({ stats, summary, monthlyData, ranking, cancelados: cancelados.length, funnel, convRate })
+    res.json({ summary, funnel, monthlyData, ranking, convRate, period: { start: startDate, end: endDate } })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
