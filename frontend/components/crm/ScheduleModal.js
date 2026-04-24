@@ -23,10 +23,35 @@ export default function ScheduleModal({ onConfirm }) {
       const scheduledAt = new Date(`${date}T${time}:00`).toISOString()
       await api.scheduleLead(lead.id, scheduledAt, observacao)
       const updated = { ...lead, scheduledAt, observacao, column: 'agendado' }
-      // Atualiza o lead selecionado na conversa se for o mesmo
+
+      // 1. Atualiza o lead selecionado na conversa se for o mesmo
       if (selectedLead && String(selectedLead.id) === String(lead.id)) {
         setSelectedLead(updated)
       }
+
+      // 2. Dispara eventos globais — garante sincronização independente da origem
+      //    (busca, Kanban, Conversas, Agenda)
+      if (typeof window !== 'undefined') {
+        // Move o card visualmente em TODOS os KanbanColumns
+        window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+          detail: {
+            leadId: String(lead.id),
+            fromCol: lead.column || null,
+            toCol: 'agendado',
+            leadData: updated,
+          }
+        }))
+        // Adiciona na aba de Agendamentos e no leadsRef do NotificationAlarm
+        window.dispatchEvent(new CustomEvent('tcrm:schedule-created', {
+          detail: { id: String(lead.id), scheduledAt, observacao, lead: updated }
+        }))
+        // Reload da coluna "agendado" para garantir que o card apareça
+        window.dispatchEvent(new CustomEvent('tcrm:reload-column', {
+          detail: { column: 'agendado' }
+        }))
+      }
+
+      // 3. Callback do pai (KanbanColumn já usa isso para applyPendingMove)
       onConfirm && onConfirm(updated)
       setScheduleModal(null)
       setDate(''); setTime(''); setObservacao('')
