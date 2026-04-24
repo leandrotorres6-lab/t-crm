@@ -118,7 +118,7 @@ export default function AgendamentoPage() {
 
   return (
     <MainLayout>
-      <div className="h-full flex flex-col">
+      <div className="h-full page-enter flex flex-col">
         <div className="px-6 py-4 border-b border-[var(--border)] flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <div>

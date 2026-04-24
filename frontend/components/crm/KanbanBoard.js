@@ -361,8 +361,11 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: bolhas de navegação ── */}
-      <div className="md:hidden border-b border-[var(--border)] flex-shrink-0"
+      <div className="md:hidden border-b border-[var(--border)] flex-shrink-0 relative"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
+        {/* Fade direito — indica mais colunas */}
+        <div className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none z-10"
+          style={{ background: 'linear-gradient(to right, transparent, var(--bg-secondary))' }} />
         <div className="flex gap-2 px-2 py-2 overflow-x-auto"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {ALL_COLUMNS.map((col, i) => {

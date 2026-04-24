@@ -103,7 +103,7 @@ function ContactDetail({ contact, onClose }) {
 
   if (!contact) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3"
+      <div className="h-full page-enter flex flex-col items-center justify-center gap-3"
         style={{ backgroundColor: 'var(--bg-secondary)' }}>
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
           style={{ backgroundColor: 'var(--bg-hover)' }}>

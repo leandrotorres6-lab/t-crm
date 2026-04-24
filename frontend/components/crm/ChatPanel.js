@@ -1580,7 +1580,7 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-[var(--bg-secondary)] relative animate-slide-in-right">
+    <div className="flex flex-col bg-[var(--bg-secondary)] relative animate-slide-in-right" style={{ height: "100%", maxHeight: "100dvh" }}>
       {/* Toast */}
       {moveToast && (
         <div className="absolute top-3 left-3 right-3 z-50 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium animate-slide-up shadow-lg"
@@ -1675,7 +1675,8 @@ export default function ChatPanel() {
       {/* ── Mensagens ── */}
       <div ref={scrollRef}
         onScroll={() => {}}
-        className="flex-1 overflow-y-auto px-4 py-3">
+        className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
 
         {loadingInit
           ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-[var(--text-muted)]" /></div>
@@ -1732,7 +1733,8 @@ export default function ChatPanel() {
       )}
 
       {/* ── Área de input ── */}
-      <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0">
+      <div className="px-3 py-3 border-t border-[var(--border)] flex-shrink-0"
+        style={{ position: "sticky", bottom: 0, zIndex: 10, backgroundColor: "var(--bg-secondary)", paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }}>
         {/* Gravando */}
         {recordingMode && (
           <RecordingBar
