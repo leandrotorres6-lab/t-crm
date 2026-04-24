@@ -1027,8 +1027,25 @@ app.get('/api/search', async (req, res) => {
 
     const normalizePhone = (s) => (s || '').replace(/[^0-9]/g, '')
     const qPhone = normalizePhone(qTrim)
-    const seen = new Set()  // dedup por id entre as 3 camadas
+    // seenIds: dedup por conversation_id dentro de cada camada
+    // phoneMap: dedup final por telefone — 1 contato = 1 resultado (conversa mais recente)
+    const seenIds = new Set()
+    const phoneMap = new Map()
     let results = []
+
+    const addResult = (item) => {
+      const phone = normalizePhone(item.phone || '')
+      const key = phone || String(item.id)  // fallback para id se sem telefone
+      const existing = phoneMap.get(key)
+      if (!existing) {
+        phoneMap.set(key, item)
+      } else {
+        // Mantém a conversa mais recente para o mesmo contato
+        const dNew = new Date(item.lastMessageAt || item.updatedAt || 0).getTime()
+        const dOld = new Date(existing.lastMessageAt || existing.updatedAt || 0).getTime()
+        if (dNew > dOld) phoneMap.set(key, item)
+      }
+    }
 
     // ── CAMADA 1: Supabase leads — SEM filtro de status (inclui resolved/finalizados) ──
     if (db.DB_READY()) {
@@ -1036,87 +1053,85 @@ app.get('/api/search', async (req, res) => {
         const dbResults = await db.searchAll({ q: qTrim, assignedTo: role === 'vendedor' ? agentId : null })
         for (const r of (dbResults || [])) {
           const id = String(r.id)
-          if (seen.has(id)) continue
-          seen.add(id)
-          results.push({ ...r, source: 'lead' })
+          if (seenIds.has(id)) continue
+          seenIds.add(id)
+          addResult({ ...r, source: 'lead' })
         }
       } catch (e) { console.warn('[Search] Supabase error:', e.message) }
     }
 
-    // ── CAMADA 2: Cache em memória (leads ativos não necessariamente no Supabase ainda) ──
+    // ── CAMADA 2: Cache em memória (leads ativos) ──
     try {
       let all = await getAllConversations()
       if (role === 'vendedor' && agentId) all = all.filter(c => Number(c.assignedTo) === Number(agentId))
       const terms = qTrim.toLowerCase().split(/ +/)
       for (const c of all) {
         const id = String(c.id)
-        if (seen.has(id)) continue
+        if (seenIds.has(id)) continue
         const phoneNorm = normalizePhone(c.phone || '')
         const text = [c.name, c.phone, phoneNorm, c.lastMessage].join(' ').toLowerCase()
         const match = terms.every(t => text.includes(t)) ||
                       (qPhone.length >= 4 && phoneNorm.includes(qPhone))
-        if (match) { seen.add(id); results.push({ ...c, source: 'lead' }) }
+        if (match) { seenIds.add(id); addResult({ ...c, source: 'lead' }) }
       }
     } catch (e) { console.warn('[Search] Cache error:', e.message) }
 
-    // ── CAMADA 3: Chatwoot API — encontra conversas resolvidas e contatos sem lead ──
-    if (CHATWOOT_READY && results.length < 15) {
+    // ── CAMADA 3: Chatwoot API — sempre consultada para não perder mensagens recentes ──
+    // (addResult já garante que o mais recente vence — Chatwoot pode sobrescrever Supabase)
+    if (CHATWOOT_READY) {
       try {
         const { contacts } = await cw.getContacts(qTrim, 1)
         for (const contact of (contacts || []).slice(0, 10)) {
           const phone = contact.phone_number || ''
           const name  = contact.name || ''
-          // Busca as conversas mais recentes desse contato
+          const phoneNorm = normalizePhone(phone)
           const convs = await cw.getContactConversations(contact.id)
           if (convs?.length) {
-            // Usa a conversa mais recente
-            const conv = convs[0]
+            // Usa a conversa mais recente desse contato
+            const conv = convs.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0))[0]
             const id = String(conv.id)
-            if (seen.has(id)) continue
-            seen.add(id)
+            if (seenIds.has(id)) continue
+            seenIds.add(id)
             const lastMsg = conv.last_non_activity_message
-            results.push({
+            addResult({
               id,
-              name:         name || phone,
+              name:          name || phone,
               phone,
-              avatar:       name.slice(0,2).toUpperCase() || '??',
-              lastMessage:  lastMsg?.content || '',
+              avatar:        name.slice(0, 2).toUpperCase() || '??',
+              lastMessage:   lastMsg?.content || '',
               lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at * 1000).toISOString() : null,
-              column:       null,
-              status:       conv.status || 'resolved',
-              assignedTo:   conv.meta?.assignee?.id || null,
-              assigneeName: conv.meta?.assignee?.name || '',
-              source:       'chatwoot',
-              chatwootData: cw.mapConversation(conv, null),
+              column:        null,
+              status:        conv.status || 'resolved',
+              assignedTo:    conv.meta?.assignee?.id || null,
+              assigneeName:  conv.meta?.assignee?.name || '',
+              source:        'chatwoot',
+              chatwootData:  cw.mapConversation(conv, null),
             })
-          } else if (!seen.has('c-' + contact.id)) {
-            // Contato sem conversa
-            seen.add('c-' + contact.id)
-            results.push({
-              id:      'c-' + contact.id,
-              name,
-              phone,
-              avatar:  name.slice(0,2).toUpperCase() || '??',
-              column:  null,
-              status:  'contact',
-              source:  'contact',
-            })
+          } else {
+            const cKey = 'c-' + contact.id
+            if (!seenIds.has(cKey)) {
+              seenIds.add(cKey)
+              addResult({ id: cKey, name, phone, avatar: name.slice(0,2).toUpperCase() || '??', column: null, status: 'contact', source: 'contact' })
+            }
           }
         }
       } catch (e) { console.warn('[Search] Chatwoot error:', e.message) }
     }
 
-    // Ordena: leads ativos → leads resolvidos → chatwoot → contatos
-    const order = { lead: 0, chatwoot: 1, contact: 2 }
+    // Monta array final do phoneMap (já deduplicado por telefone)
+    results = Array.from(phoneMap.values())
+
+    // Ordena: leads com unread → leads ativos → resolvidos/chatwoot → contatos
+    const srcOrder = { lead: 0, chatwoot: 1, contact: 2 }
     results.sort((a, b) => {
-      const so = (order[a.source] || 0) - (order[b.source] || 0)
+      const so = (srcOrder[a.source] || 0) - (srcOrder[b.source] || 0)
       if (so !== 0) return so
       const ua = a.unreadCount || 0, ub = b.unreadCount || 0
       if (ua !== ub) return ub - ua
       return new Date(b.lastMessageAt || b.createdAt || 0) - new Date(a.lastMessageAt || a.createdAt || 0)
     })
 
-    console.log(`[Search] "${qTrim}" → ${results.length} resultados (leads:${results.filter(r=>r.source==='lead').length} chatwoot:${results.filter(r=>r.source==='chatwoot').length})`)
+    console.log(`[Search] "${qTrim}" → ${results.length} únicos por telefone (leads:${results.filter(r=>r.source==='lead').length} chatwoot:${results.filter(r=>r.source==='chatwoot').length})`)
     res.json({ results: results.slice(0, 20), total: results.length })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
