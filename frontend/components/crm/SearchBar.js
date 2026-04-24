@@ -10,14 +10,24 @@ const COL_LABELS = {
   pago:'Pago ✓', sem_retorno:'Sem Retorno'
 }
 
-export default function SearchBar({ onResults, onClear }) {
+export default function SearchBar({ onResults, onClear, autoFocus = false }) {
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState({ column: '', assignee: '', product: '' })
   const [showFilters, setShowFilters] = useState(false)
   const [agents, setAgents] = useState([])
   const [searching, setSearching] = useState(false)
   const debounceRef = useRef(null)
+  const inputRef = useRef(null)
   const { currentAgent } = useApp()
+
+  // Foca o input quando autoFocus=true — funciona no mobile após mount
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      // Delay necessário no iOS para garantir que o teclado abra após animação
+      const t = setTimeout(() => inputRef.current?.focus(), 80)
+      return () => clearTimeout(t)
+    }
+  }, [autoFocus])
 
   useEffect(() => {
     api.getAgents().then(setAgents).catch(() => {})
@@ -46,7 +56,8 @@ export default function SearchBar({ onResults, onClear }) {
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => doSearch(query, filters), 300)
+    // 400ms no mobile é mais seguro para aguardar composição de texto (IME, autocorrect)
+    debounceRef.current = setTimeout(() => doSearch(query, filters), 400)
     return () => clearTimeout(debounceRef.current)
   }, [query, filters, doSearch])
 
@@ -66,15 +77,29 @@ export default function SearchBar({ onResults, onClear }) {
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
+            ref={inputRef}
+            type="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar por nome, telefone ou mensagem..."
+            onInput={e => {
+              // Fallback para iOS Safari que às vezes não dispara onChange corretamente
+              const val = e.currentTarget.value
+              if (val !== query) setQuery(val)
+            }}
+            placeholder="Buscar por nome, telefone..."
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="search"
+            enterKeyHint="search"
             className="w-full pl-8 pr-8 py-2 rounded-xl text-sm transition-all"
             style={{
               backgroundColor: 'var(--bg-card)',
               border: `1px solid ${hasActive ? 'rgba(59,130,246,0.5)' : 'var(--border)'}`,
               color: 'var(--text-primary)',
               outline: 'none',
+              WebkitAppearance: 'none',  // remove estilo nativo de search no Safari
             }}
           />
           {(searching) && (
