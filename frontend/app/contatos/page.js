@@ -301,11 +301,13 @@ export default function ContactsPage() {
   const bottomRef = useRef(null)
   const loadingRef = useRef(false)
   // latestLoad ref evita que a callback do hook seja recriada a cada render
-  const loadRef = useRef(null)
+  const queryRef = useRef('')
   const { inputProps: searchInputProps } = useMobileSearch((v) => {
+    queryRef.current = v
     setQueryInternal(v)
     setSelected(null)
-    loadRef.current?.(v, 1, true)
+    // chama load diretamente com o valor atual (sem estado stale)
+    setTimeout(() => load(queryRef.current, 1, true), 0)
   })
 
   const load = useCallback(async (q, p, reset = false) => {
@@ -326,10 +328,7 @@ export default function ContactsPage() {
     }
   }, [])
 
-  useEffect(() => {
-    loadRef.current = load
-    load('', 1, true)
-  }, [load])
+  useEffect(() => { load('', 1, true) }, [])
 
   // Lazy load ao rolar
   useEffect(() => {
@@ -337,7 +336,7 @@ export default function ContactsPage() {
     if (!el) return
     const obs = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
-        load(query, page + 1)
+        load(queryRef.current, page + 1)
       }
     }, { threshold: 0.1 })
     obs.observe(el)
@@ -371,7 +370,6 @@ export default function ContactsPage() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
                 {...searchInputProps}
-                value={query}
                 placeholder="Nome, telefone ou email..."
                 className="input-theme pl-9 text-sm"
                 style={{ ...searchInputProps.style }}

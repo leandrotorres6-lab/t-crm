@@ -117,9 +117,27 @@ function ConversasList() {
   const [allLeads, setAllLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearchVal] = useState('')
+  const [searchResults, setSearchResults] = useState(null) // null = sem busca ativa
   const searchRef = useRef('')
+  const searchDebounce = useRef(null)
   const { inputProps: searchInputProps } = useMobileSearch(
-    useCallback((v) => { searchRef.current = v; setSearchVal(v) }, [])
+    useCallback((v) => {
+      searchRef.current = v
+      setSearchVal(v)
+      // Busca global via API (encontra contatos do Chatwoot também)
+      clearTimeout(searchDebounce.current)
+      if (!v.trim()) {
+        setSearchResults(null)
+        return
+      }
+      searchDebounce.current = setTimeout(async () => {
+        try {
+          const params = new URLSearchParams({ q: v.trim() })
+          const data = await api.search(params.toString())
+          setSearchResults(data.results || [])
+        } catch { setSearchResults([]) }
+      }, 380)
+    }, [])
   )
   const { selectedLead, setSelectedLead, unreadCounts, currentAgent, unreadUpdatedAt } = useApp()
 
