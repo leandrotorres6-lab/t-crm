@@ -47,7 +47,7 @@ function ConvItem({ lead, isSelected, onClick, unread }) {
 
   return (
     <button onClick={onClick}
-      className="w-full flex items-start gap-3 px-4 py-3 transition-all text-left relative"
+      className="w-full flex items-start gap-3 px-3 py-3 transition-all text-left relative md:px-4"
       style={{
         backgroundColor: isSelected
           ? 'rgba(59,130,246,0.08)'
@@ -170,7 +170,8 @@ function ConversasList() {
         ...prev[idx],
         lastMessage: text || prev[idx].lastMessage,
         lastMessageAt: ts,
-        unreadCount: prev[idx].unreadCount || 0,  // aguarda unread_update com timestamp
+        unreadCount: isInbound !== false ? (prev[idx].unreadCount || 0) + 1 : prev[idx].unreadCount || 0,
+        _tick: Date.now(),
       }
       const updated = [card, ...prev.filter((_, i) => i !== idx)]
       persistentCache.set(INBOX_CACHE_KEY, updated)
@@ -208,9 +209,9 @@ function ConversasList() {
   const unreadTotal = allLeads.filter(l => (unreadCounts[l.id] || l.unreadCount || 0) > 0).length
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+    <div className="flex flex-col h-full w-full" style={{ backgroundColor: 'var(--bg-secondary)' }}>
       {/* Header */}
-      <div className="px-4 pt-4 pb-2 flex-shrink-0">
+      <div className="px-3 pt-3 pb-2 flex-shrink-0 md:px-4 md:pt-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-[var(--text-primary)]">Conversas</h2>
           <button onClick={load} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">

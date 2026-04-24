@@ -30,7 +30,7 @@ function KanbanCard({ lead, columnId }) {
   const touchStartX = useRef(0)
   const [pressing, setPressing] = useState(false)
 
-  const unread = unreadCounts[lead.id] || lead.unreadCount || 0
+  const unread = Math.max(unreadCounts[lead.id] || 0, lead.unreadCount || 0)
   const color = COL_COLORS[columnId] || '#6b7280'
   const isPending = !!pendingMoves?.[lead.id]
 
@@ -55,7 +55,7 @@ function KanbanCard({ lead, columnId }) {
         if (dy < 8 && dx < 8) { e.preventDefault(); setSelectedLead(lead) }
       }}
       onClick={() => setSelectedLead(lead)}
-      className="group relative flex flex-col gap-2 p-3 rounded-xl cursor-pointer select-none transition-all duration-150"
+      className="group relative flex flex-col gap-2 p-3 rounded-xl cursor-pointer select-none transition-all duration-150 w-full"
       style={{
         backgroundColor: pressing ? 'var(--bg-hover)' : 'var(--bg-card)',
         border: `1px solid ${unread > 0 ? color + '40' : 'var(--border)'}`,

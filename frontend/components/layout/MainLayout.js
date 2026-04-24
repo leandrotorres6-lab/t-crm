@@ -36,7 +36,13 @@ export default function MainLayout({ children, chat, inbox }) {
       </div>
 
       {/* Área de conteúdo — padding bottom no mobile para o bottom nav */}
-      <style>{`@media (max-width: 767px) { .main-content-area { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important; } }`}</style>
+      <style>{`
+        @media (max-width: 767px) {
+          .main-content-area { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important; }
+          .kanban-main { margin-right: 0 !important; }
+          .kanban-main, .kanban-main * { max-width: 100vw; }
+        }
+      `}</style>
       {isInboxMode ? (
         /* INBOX MODE: [Lista] | [Chat] */
         <div className="flex flex-1 overflow-hidden min-w-0 main-content-area">

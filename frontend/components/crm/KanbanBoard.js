@@ -419,7 +419,7 @@ export default function KanbanBoard() {
       </div>
 
       {/* ── Mobile: colunas com swipe horizontal ── */}
-      <div className="md:hidden flex-1 overflow-hidden relative"
+      <div className="md:hidden flex-1 overflow-hidden relative w-full"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
         <div className="absolute inset-0">
