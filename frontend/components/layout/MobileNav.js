@@ -122,10 +122,7 @@ export default function MobileNav() {
         <div className="flex items-center justify-between px-5 py-4"
           style={{ borderBottom: `1px solid ${T.divider}`, paddingTop: 'max(16px, env(safe-area-inset-top, 16px))' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center"
-              style={{ boxShadow: '0 0 12px rgba(59,130,246,0.4)' }}>
-              <span className="text-white font-black text-sm">T</span>
-            </div>
+            <img src="/logo.png" alt="T-CRM" className="w-8 h-8 rounded-xl object-cover" style={{ boxShadow: '0 0 12px rgba(99,102,241,0.4)' }} />
             <span className="font-bold text-base" style={{ color: T.titleColor }}>T-CRM</span>
           </div>
           <button onClick={() => setDrawerOpen(false)}

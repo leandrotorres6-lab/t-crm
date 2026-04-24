@@ -180,17 +180,12 @@ export default function Sidebar({ mobileOverlay = false }) {
         style={{ paddingTop: mobileOverlay ? 'max(16px, env(safe-area-inset-top, 16px))' : undefined }}>
         {sidebarOpen && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg"
-              style={{ boxShadow: '0 0 12px rgba(59,130,246,0.5)' }}>
-              <span className="text-white text-sm font-bold">T</span>
-            </div>
+            <img src="/logo.png" alt="T-CRM" className="w-8 h-8 rounded-xl object-cover" style={{ boxShadow: '0 0 12px rgba(99,102,241,0.5)' }} />
             <span className="font-bold tracking-tight" style={{ color: 'white', fontSize: mobileOverlay ? '17px' : '15px' }}>T-CRM</span>
           </div>
         )}
         {!sidebarOpen && (
-          <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center mx-auto">
-            <span className="text-white text-xs font-bold">T</span>
-          </div>
+          <img src="/logo.png" alt="T-CRM" className="w-7 h-7 rounded-lg object-cover mx-auto" />
         )}
         {sidebarOpen && (
           <button
