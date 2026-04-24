@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 
 export function usePush(agentId) {
-  const [supported, setSupported] = useState(false)
-  const [permission, setPermission] = useState('default')
-  const [subscribed, setSubscribed] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [supported,   setSupported]   = useState(false)
+  const [permission,  setPermission]  = useState('default')
+  const [subscribed,  setSubscribed]  = useState(false)
+  const [loading,     setLoading]     = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -19,20 +19,25 @@ export function usePush(agentId) {
     if (!supported || loading) return
     setLoading(true)
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js')
+      // Registra e aguarda SW ativo
+      const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       await navigator.serviceWorker.ready
+
+      // Força atualização do SW se houver versão nova
+      reg.update().catch(() => {})
 
       const { publicKey } = await api.getPushKey()
       const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
+        userVisibleOnly:    true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
 
+      // Envia subscription + endpoint para o backend (identifica dispositivo)
       await api.subscribePush(sub.toJSON(), agentId)
       setSubscribed(true)
       setPermission('granted')
     } catch (err) {
-      console.error('[Push]', err)
+      console.error('[Push] Subscribe error:', err)
       if (err.name === 'NotAllowedError') setPermission('denied')
     } finally {
       setLoading(false)
@@ -43,23 +48,29 @@ export function usePush(agentId) {
     setLoading(true)
     try {
       const reg = await navigator.serviceWorker.getRegistration()
+      let endpoint = null
       if (reg) {
         const sub = await reg.pushManager.getSubscription()
-        if (sub) await sub.unsubscribe()
+        if (sub) { endpoint = sub.endpoint; await sub.unsubscribe() }
       }
-      await api.unsubscribePush(agentId)
+      // Passa endpoint para o backend identificar e remover o dispositivo certo
+      await api.unsubscribePush(agentId, endpoint)
       setSubscribed(false)
     } finally {
       setLoading(false)
     }
   }
 
-  // Check existing subscription
+  // Verifica assinatura existente ao inicializar
   useEffect(() => {
     if (!supported || !agentId) return
-    navigator.serviceWorker.register('/sw.js').then(reg => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
       reg.pushManager.getSubscription().then(sub => {
-        setSubscribed(!!sub)
+        if (sub) {
+          setSubscribed(true)
+          // Re-envia subscription para garantir que o backend tem este dispositivo
+          api.subscribePush(sub.toJSON(), agentId).catch(() => {})
+        }
       })
     }).catch(() => {})
   }, [supported, agentId])
@@ -69,7 +80,7 @@ export function usePush(agentId) {
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)
   return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
 }

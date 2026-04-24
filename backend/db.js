@@ -297,9 +297,15 @@ async function upsertManyNoUnread(leads) {
 // ── Push Subscriptions ───────────────────────────────────────────────────────
 async function savePushSubscription(agentId, subscription) {
   if (!DB_READY) return
+  // device_key = hash curto do endpoint — identifica dispositivo único por agente
+  const deviceKey = String(agentId) + '_' + subscription.endpoint.slice(-32).replace(/[^a-zA-Z0-9]/g, '')
   const { error } = await supabase.from('push_subscriptions')
-    .upsert({ agent_id: String(agentId), subscription: JSON.stringify(subscription), updated_at: new Date().toISOString() },
-      { onConflict: 'agent_id' })
+    .upsert({
+      agent_id:   String(agentId),
+      device_key: deviceKey,
+      subscription: JSON.stringify(subscription),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'device_key' })  // uniqueness por dispositivo, não por agente
   if (error) console.error('[DB] savePushSubscription error:', error.message)
 }
 
@@ -350,7 +356,8 @@ async function getDashboardStats({ start, end } = {}) {
 
 async function deletePushSubscription(agentId) {
   if (!DB_READY) return
-  await supabase.from('push_subscriptions').delete().eq('agent_id', String(agentId))
+  // Deleta assinatura específica do dispositivo, não todas do agente
+  await supabase.from('push_subscriptions').delete().eq('device_key', String(agentId))
 }
 
 async function loadPushSubscriptions() {

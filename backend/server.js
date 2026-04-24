@@ -19,6 +19,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tcrm-dev-secret-change-in-producti
 const JWT_EXPIRES = '7d'
 
 // Subscriptions em memória (migrar para Supabase futuramente)
+// Map<deviceKey, {agentId, subscription}> — suporta múltiplos dispositivos por agente
 const pushSubscriptions = new Map()
 const zlib = require('zlib')
 const multer = require('multer')
@@ -1269,8 +1270,22 @@ app.post('/api/push/subscribe', async (req, res) => {
 })
 
 app.delete('/api/push/unsubscribe', (req, res) => {
-  const { agentId } = req.body
-  pushSubscriptions.delete(agentId || 'anon')
+  const { agentId, endpoint } = req.body
+  if (endpoint) {
+    // Remove dispositivo específico pelo endpoint
+    for (const [key, entry] of pushSubscriptions) {
+      if (entry.subscription?.endpoint === endpoint) {
+        pushSubscriptions.delete(key)
+        if (db.DB_READY()) db.deletePushSubscription?.(key).catch(() => {})
+        break
+      }
+    }
+  } else {
+    // Remove todos os dispositivos do agente
+    for (const [key, entry] of pushSubscriptions) {
+      if (entry.agentId === String(agentId || 'anon')) pushSubscriptions.delete(key)
+    }
+  }
   res.json({ ok: true })
 })
 
@@ -1296,40 +1311,67 @@ function isSupervisorAgent(agentId) {
 
 async function sendPushToAssigned(conversationId, title, body, data = {}) {
   if (!pushSubscriptions.size) return
-  const payload = JSON.stringify({ title, body, data, icon: '/icon-192.png', badge: '/icon-192.png' })
+  const payload = JSON.stringify({
+    title, body, data,
+    icon:  '/icon-192.png',
+    badge: '/icon-192.png',
+    tag:   data.tag || `conv-${conversationId}`,  // agrupa notificações da mesma conversa
+    renotify: true,
+  })
 
-  // Tenta pegar assignedTo do Supabase (mais atualizado)
+  // Store em memória primeiro (rápido, sem query)
   let assignedTo = null
-  if (db.DB_READY()) {
-    try {
-      const leads = await db.getAll()
-      const lead = leads?.find(l => String(l.id) === String(conversationId))
-      assignedTo = lead?.assignedTo ? String(lead.assignedTo) : null
-    } catch {}
+  const cached = store.getCache()
+  if (cached?.[String(conversationId)]) {
+    assignedTo = cached[String(conversationId)].assignedTo
+      ? String(cached[String(conversationId)].assignedTo) : null
   }
-  // Fallback: store em memória
+  // Fallback: meta do store
   if (!assignedTo) {
     const meta = store.getMeta(conversationId)
     assignedTo = meta?.assignedTo ? String(meta.assignedTo) : null
   }
+  // Última opção: Supabase (só se não achou no cache)
+  if (!assignedTo && db.DB_READY()) {
+    try {
+      const lead = await db.getLeadById(conversationId)
+      assignedTo = lead?.assignedTo ? String(lead.assignedTo) : null
+    } catch {}
+  }
 
   let sent = 0
-  for (const [agentId, sub] of pushSubscriptions) {
-    const shouldNotify = !assignedTo || agentId === assignedTo || isSupervisorAgent(agentId)
+  const sendWithRetry = async (deviceKey, agentId, sub, retries = 2) => {
+    try {
+      await webpush.sendNotification(sub, payload)
+      console.log(`[Push] 🔔 Enviado: agente=${agentId} device=${deviceKey.slice(0,16)}...`)
+      return true
+    } catch (err) {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        // Subscription expirada ou inválida — remove
+        pushSubscriptions.delete(deviceKey)
+        if (db.DB_READY()) db.deletePushSubscription?.(deviceKey).catch(() => {})
+        console.warn(`[Push] Subscription expirada removida: ${deviceKey.slice(0,16)}...`)
+        return false
+      }
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 500))
+        return sendWithRetry(deviceKey, agentId, sub, retries - 1)
+      }
+      console.warn(`[Push] Falha após retries: ${err.message}`)
+      return false
+    }
+  }
+
+  const promises = []
+  for (const [deviceKey, entry] of pushSubscriptions) {
+    const { agentId: entryAgentId, subscription: sub } = entry
+    const shouldNotify = !assignedTo || entryAgentId === assignedTo || isSupervisorAgent(entryAgentId)
     if (!shouldNotify) continue
-    webpush.sendNotification(sub, payload)
-      .then(() => { console.log(`[Push] 🔔 Enviado para agente ${agentId}`) })
-      .catch(err => {
-        if (err.statusCode === 410) {
-          // Subscription expirada — limpa da memória e do Supabase
-          pushSubscriptions.delete(agentId)
-          if (db.DB_READY()) db.deletePushSubscription?.(agentId).catch(() => {})
-          console.warn(`[Push] Subscription expirada removida: agente ${agentId}`)
-        }
-      })
+    promises.push(sendWithRetry(deviceKey, entryAgentId, sub))
     sent++
   }
-  if (sent > 0) console.log(`[Push] Disparado para ${sent} agente(s) (conv=${conversationId} assigned=${assignedTo || 'todos'})`)
+  await Promise.allSettled(promises)
+  if (sent > 0) console.log(`[Push] Enviado para ${sent} dispositivo(s) (conv=${conversationId} assigned=${assignedTo || 'todos'})`)
 }
 
 // Ponto de entrada único para notificações — garante dedup entre webhook e polling
