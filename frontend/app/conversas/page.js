@@ -219,21 +219,15 @@ function ConversasList() {
   })
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const qDigits = q.replace(/\D/g, '')  // só dígitos para busca de telefone
-    return allLeads.filter(lead => {
-      const matchSearch = !q ||
-        (lead.name  || '').toLowerCase().includes(q) ||
-        (lead.phone || '').replace(/\D/g, '').includes(qDigits || q) ||
-        (lead.phone || '').toLowerCase().includes(q) ||
-        (lead.lastMessage || '').toLowerCase().includes(q)
-      if (!matchSearch) return false
-      if (tab === 'nao_lidas') {
-        return (unreadCounts[lead.id] || lead.unreadCount || 0) > 0
-      }
-      return true
-    })
-  }, [allLeads, search, tab, unreadCounts])
+    // Busca ativa → usa resultados da API global (Supabase + Chatwoot)
+    if (searchResults !== null) return searchResults
+
+    // Sem busca → filtra lista local por tab
+    if (tab === 'nao_lidas') {
+      return allLeads.filter(l => (unreadCounts[l.id] || l.unreadCount || 0) > 0)
+    }
+    return allLeads
+  }, [allLeads, searchResults, tab, unreadCounts])
 
   const unreadTotal = useMemo(
     () => allLeads.filter(l => (unreadCounts[l.id] || l.unreadCount || 0) > 0).length,

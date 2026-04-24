@@ -306,8 +306,8 @@ export default function ContactsPage() {
     queryRef.current = v
     setQueryInternal(v)
     setSelected(null)
-    // chama load diretamente com o valor atual (sem estado stale)
-    setTimeout(() => load(queryRef.current, 1, true), 0)
+    // chama load diretamente com o valor atual
+    load(queryRef.current, 1, true)
   })
 
   const load = useCallback(async (q, p, reset = false) => {
