@@ -485,11 +485,20 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
     store.setColumn(id, 'agendado')
     store.setMeta(id, { scheduledAt, observacao: observacao || '' })
     store.invalidateCache()
-    // Persiste coluna + scheduledAt no Supabase
+    // Persiste coluna + scheduledAt + reabre lead resolvido no Supabase
     if (db.DB_READY()) {
-      db.updateMeta(id, { column: 'agendado', scheduledAt: scheduledAt || null, observacao: observacao || '' }).catch(() => {})
+      db.updateMeta(id, {
+        column:      'agendado',
+        status:      'open',           // ← reabre lead resolvido/finalizado
+        scheduledAt: scheduledAt || null,
+        observacao:  observacao || '',
+      }).catch(() => {})
     }
-    if (CHATWOOT_READY) cw.setKanbanLabel(id, 'agendado').catch(e => console.warn(e.message))
+    // Reabre conversa no Chatwoot se estava resolvida
+    if (CHATWOOT_READY) {
+      cw.setKanbanLabel(id, 'agendado').catch(e => console.warn(e.message))
+      cw.reopenConversation(id).catch(() => {})  // garante status=open no Chatwoot
+    }
     io.emit('lead_moved', { id, column: 'agendado', scheduledAt })
     res.json({ id, column: 'agendado', scheduledAt, observacao })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1490,12 +1499,21 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     if (newColumn && newColumn !== currentCol) {
       store.setColumn(convId, newColumn)
       store.invalidateCache()
+      // Persiste nova coluna no Supabase (sem isso o card some no reload)
+      if (db.DB_READY()) {
+        db.updateMeta(convId, { column: newColumn }).catch(() => {})
+      }
+      // Busca lead completo para emitir com dados atualizados
+      let leadData = null
+      const cached = store.getCache()
+      if (cached?.[convId]) leadData = { ...cached[convId], column: newColumn }
       io.emit('lead_moved', {
-        id: convId,
-        column: newColumn,
+        id:         convId,
+        column:     newColumn,
         fromColumn: currentCol,
+        lead:       leadData,
       })
-      console.log(`[Webhook] Conversa ${convId}: ${currentCol} → ${newColumn}`)
+      console.log(`[Webhook] Conversa ${convId}: ${currentCol} → ${newColumn} (persistido)`)
     } else {
       store.invalidateCache()
     }
