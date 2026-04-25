@@ -1169,7 +1169,7 @@ app.get('/api/search', async (req, res) => {
     // Sempre consultado, mas addResult só substitui se Chatwoot for mais recente
     if (CHATWOOT_READY) {
       try {
-        const { contacts } = await cw.getContacts(qTrim, 1)
+        const { contacts } = await cw.getContactsList({ q: qTrim, page: 1 })
         for (const contact of (contacts || []).slice(0, 10)) {
           const phone = contact.phone_number || ''
           const name  = contact.name || ''
@@ -1502,8 +1502,18 @@ app.post('/api/conversations/:id/typing', (req, res) => {
   res.json({ ok: true })
 })
 
+// ─── WEBHOOK TEST — verifica se o URL está correto ──────────────────────────
+app.get('/api/chatwoot/webhook', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Webhook endpoint ativo. Configure este URL no Chatwoot como webhook.',
+    timestamp: new Date().toISOString(),
+  })
+})
+
 // ─── WEBHOOK CHATWOOT ────────────────────────────────────────────────────────
 app.post('/api/chatwoot/webhook', async (req, res) => {
+  console.log('[WH] 📨 Evento recebido:', req.body?.event, '— conv:', req.body?.data?.conversation?.id || req.body?.data?.id || 'n/a')
   const { event, data } = req.body
   if (!data) return res.json({ ok: true })
 
