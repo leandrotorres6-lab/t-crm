@@ -53,16 +53,36 @@ io.on('connection', s => {
   console.log(`[Socket] Cliente conectado: ${s.id} (total: ${io.engine.clientsCount})`)
 
   // Snapshot de unread ao conectar/reconectar — elimina janela cega
-  s.on('sync_request', () => {
+  // Aceita { since } opcional para replay de leads atualizados após desconexão
+  s.on('sync_request', async ({ since } = {}) => {
     try {
+      // 1. Unread snapshot — sempre
       const state = store._state()
       const unread = {}
       Object.entries(state.unread || {}).forEach(([id, count]) => {
         if (count > 0) unread[id] = count
       })
       s.emit('sync_state', { unreadCounts: unread })
-      console.log(`[Socket] Sync enviado para ${s.id}: ${Object.keys(unread).length} conversas com unread`)
-    } catch {}
+
+      // 2. Replay de leads atualizados desde a desconexão (se since informado)
+      if (since && db.DB_READY()) {
+        const sinceIso = new Date(Number(since)).toISOString()
+        const { data, error } = await db._supabase()
+          .from('leads')
+          .select('*')
+          .gt('updated_at', sinceIso)
+          .order('updated_at', { ascending: false })
+          .limit(50)
+
+        if (!error && data?.length) {
+          const items = data.map(row => db.fromRow(row))
+          s.emit('sync_data', items)
+          console.log(`[Sync] Replay ${items.length} lead(s) desde ${sinceIso.slice(0,19)} para ${s.id}${items.length === 50 ? ' ⚠️ limite atingido' : ''}`)
+        }
+      }
+
+      console.log(`[Socket] Sync enviado: ${Object.keys(unread).length} unread (since=${since ? new Date(Number(since)).toISOString().slice(0,19) : 'n/a'})`)
+    } catch (e) { console.warn('[Sync] Erro:', e.message) }
   })
 
   s.on('disconnect', (reason) => {

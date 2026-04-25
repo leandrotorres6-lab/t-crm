@@ -18,14 +18,15 @@ export function getSocket() {
       pingInterval: 8000,           // ping a cada 8s — Railway fecha após 30s de inatividade
       pingTimeout: 10000,
     })
+    // Timestamp do último evento recebido — usado no replay ao reconectar
+    socket._lastEventAt = Date.now()
+
     socket.on('connect', () => {
       console.log('[Socket] ✅ Conectado:', socket.id)
-      // Solicita snapshot de unread + mensagens perdidas durante desconexão
       socket.emit('sync_request')
     })
     socket.on('disconnect', (reason) => {
-      console.warn('[Socket] ❌ Desconectado:', reason)
-      // 'transport close' = Railway fechou a conexão — reconecta imediatamente
+      console.warn('[Socket] ❌ Desconectado:', reason, '— lastEvent:', new Date(socket._lastEventAt).toISOString().slice(11,19))
       if (reason === 'transport close' || reason === 'transport error') {
         socket.connect()
       }
@@ -33,7 +34,28 @@ export function getSocket() {
     socket.on('connect_error', (e) => console.warn('[Socket] Erro:', e.message))
     socket.on('reconnect', (n) => {
       console.log(`[Socket] Reconectado após ${n} tentativa(s)`)
-      socket.emit('sync_request')  // re-sincroniza unread após reconexão
+      // Passa since para o backend fazer replay de leads atualizados
+      socket.emit('sync_request', { since: socket._lastEventAt })
+    })
+
+    // Atualiza lastEventAt em qualquer evento relevante
+    const trackEvent = () => { socket._lastEventAt = Date.now() }
+    socket.on('new_message',          trackEvent)
+    socket.on('new_conversation',     trackEvent)
+    socket.on('lead_moved',           trackEvent)
+    socket.on('unread_update',        trackEvent)
+    socket.on('conversation_resolved', trackEvent)
+
+    // Replay: leads que mudaram durante desconexão
+    socket.on('sync_data', (items) => {
+      if (!items?.length) return
+      console.log('[Sync] Replay de', items.length, 'lead(s) perdido(s) durante desconexão')
+      if (typeof window === 'undefined') return
+      items.forEach(item => {
+        window.dispatchEvent(new CustomEvent('tcrm:lead-updated', { detail: item }))
+      })
+      // Atualiza lastEventAt com o mais recente do replay
+      socket._lastEventAt = Date.now()
     })
   }
   return socket

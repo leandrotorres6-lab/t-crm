@@ -99,6 +99,21 @@ export function AppProvider({ children }) {
     console.log(`[Socket] sync_state: ${Object.keys(snapshot).length} conversas com unread`)
   })
 
+  // Sincroniza badge do ícone do app com total de não lidas
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    const total = Object.values(unreadCounts || {}).reduce((s, v) => s + (v || 0), 0)
+    navigator.serviceWorker.ready.then(reg => {
+      reg.active?.postMessage({ type: total > 0 ? 'SET_BADGE' : 'CLEAR_BADGE', count: total })
+    }).catch(() => {})
+    // API direta (Chrome desktop + Android PWA)
+    if (total > 0) {
+      navigator.setAppBadge?.(total).catch(() => {})
+    } else {
+      navigator.clearAppBadge?.().catch(() => {})
+    }
+  }, [unreadCounts])
+
   // Agendamento criado/atualizado — atualiza aba de agendamentos em tempo real
   useSocket('schedule_created', ({ id, scheduledAt, observacao, lead }) => {
     if (typeof window !== 'undefined') {
@@ -212,6 +227,30 @@ export function AppProvider({ children }) {
       }))
     }
   })
+
+  // Replay: lead atualizado durante desconexão — atualiza estado atomicamente
+  useEffect(() => {
+    const handler = (e) => {
+      const lead = e.detail
+      if (!lead?.id) return
+      const id = String(lead.id)
+      // Atualiza unread se veio com dado
+      if (lead.unreadCount !== undefined) {
+        setUnreadCounts(prev => {
+          if (prev[id] === lead.unreadCount) return prev
+          return { ...prev, [id]: lead.unreadCount || 0 }
+        })
+      }
+      // Propaga para Kanban e Conversas via evento de movimento se coluna mudou
+      if (lead.column) {
+        window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+          detail: { leadId: id, fromCol: null, toCol: lead.column, leadData: lead }
+        }))
+      }
+    }
+    window.addEventListener('tcrm:lead-updated', handler)
+    return () => window.removeEventListener('tcrm:lead-updated', handler)
+  }, [])
 
   // Escuta evento de sessão expirada (token 401)
   useEffect(() => {
