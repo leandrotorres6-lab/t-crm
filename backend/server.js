@@ -1482,6 +1482,7 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
   }
 
   if (event === 'message_created') {
+    const t0 = Date.now()
     const msg = cw.mapMessage(data)
     const conversationId = String(data.conversation?.id || data.conversation_id)
     const now = new Date().toISOString()
@@ -1489,29 +1490,15 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     // Filtra mensagens privadas (notas internas do Chatwoot)
     if (data.private === true || data.message_type === 2) return res.json({ ok: true })
 
-    // message_type: 0=incoming(cliente), 1=outgoing(agente/bot), 2=activity, 3=template
     const mt = data.message_type
     const isInbound = mt === 0 || mt === '0' || mt === 'incoming' || mt === 'inbound'
-    console.log(`[WH] message_type="${mt}" typeof=${typeof mt} isInbound=${isInbound} private=${data.private} conv=${String(data.conversation?.id || data.conversation_id)}`)
 
-    // Atualiza lastMessage + lastMessageAt no cache sem invalidar tudo
+    // ── 1. Cache local — síncrono, zero latência ──────────────────────────────
     store.updateLastMessage(conversationId, content)
     store.updateLastMessageAt(conversationId, content, now)
     _colIdx = null
 
-    // Atualiza Supabase e obtém novo updatedAt para sincronização
-    let unreadUpdatedAt = now
-    if (db.DB_READY()) {
-      db.updateLastMessage(conversationId, content, now).catch(() => {})
-      if (isInbound) {
-        const result = await db.incrementUnread(conversationId).catch(() => null)
-        if (result?.updated_at) unreadUpdatedAt = result.updated_at
-      }
-    }
-
-    console.log(`[WH] msg conv=${conversationId} type=${isInbound?'IN':'OUT'} unreadAt=${unreadUpdatedAt.slice(0,19)} preview="${content.slice(0,30)}"`)
-
-    // Emite para todos os clientes conectados
+    // ── 2. Socket — emite IMEDIATAMENTE, antes de qualquer I/O ───────────────
     const senderName = data.conversation?.meta?.sender?.name || data.sender?.name || ''
     io.emit('new_message', {
       conversationId,
@@ -1521,15 +1508,36 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
       isInbound,
       senderName,
     })
+    console.log(`[WH] socket new_message +${Date.now()-t0}ms conv=${conversationId} type=${isInbound?'IN':'OUT'} "${content.slice(0,30)}"`)
 
     if (isInbound) {
+      // unread no store (síncrono) — emite imediatamente com valor local
       const count = store.incrementUnread(conversationId)
-      io.emit('unread_update', { conversationId, count, updatedAt: unreadUpdatedAt })
+      io.emit('unread_update', { conversationId, count, updatedAt: now })
 
-      // Push notification — via notifyInbound (dedup compartilhado com polling)
+      // Push em background — não bloqueia nem o socket nem o res.json
       const contactName = data.conversation?.meta?.sender?.name || 'Cliente'
-      notifyInbound(data.id || data.message_id, conversationId, contactName, content)
+      setImmediate(() => notifyInbound(data.id || data.message_id, conversationId, contactName, content))
     }
+
+    // ── 3. Supabase em background — não bloqueia resposta do webhook ──────────
+    if (db.DB_READY()) {
+      setImmediate(async () => {
+        const tDb = Date.now()
+        db.updateLastMessage(conversationId, content, now).catch(() => {})
+        if (isInbound) {
+          const result = await db.incrementUnread(conversationId).catch(() => null)
+          // Se Supabase retornou updatedAt mais recente, sincroniza os clientes
+          if (result?.updated_at && result.updated_at !== now) {
+            io.emit('unread_update', { conversationId, count: store.getUnread?.(conversationId) || count, updatedAt: result.updated_at })
+          }
+          console.log(`[WH] supabase unread +${Date.now()-tDb}ms conv=${conversationId}`)
+        }
+      })
+    }
+
+    console.log(`[WH] webhook respondido em +${Date.now()-t0}ms conv=${conversationId}`)
+    polling.webhookPing()  // pausa polling por 10s — evita concorrência webhook+polling
   }
 
   if (event === 'conversation_created') {

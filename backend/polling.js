@@ -2,7 +2,7 @@
 // Detecção robusta: último messageId por conversa, sem depender de unread_count
 // Tolerante a bot rápido, múltiplas mensagens e delay de API
 
-const POLL_INTERVAL = 5000   // 5s — polling é fallback; webhook é o canal principal
+const POLL_INTERVAL = 3000   // 3s — fallback quando webhook não dispara
 let webhookActive = false    // true = webhook recebeu msg recentemente → polling reduz frequência
 let webhookTimer  = null
 
