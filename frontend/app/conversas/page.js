@@ -180,6 +180,27 @@ function ConversasList() {
 
   useEffect(() => { load() }, [currentAgent?.id])
 
+  // Nova mensagem — sobe conversa para o topo em tempo real
+  useEffect(() => {
+    const handler = (e) => {
+      const { conversationId, content, lastMessageAt, isInbound } = e.detail || {}
+      if (!conversationId) return
+      setAllLeads(prev => {
+        const idx = prev.findIndex(l => String(l.id) === String(conversationId))
+        if (idx === -1) return prev  // lead não está na lista — não precisa mover
+        const updated = {
+          ...prev[idx],
+          lastMessage: content || prev[idx].lastMessage,
+          lastMessageAt: lastMessageAt || prev[idx].lastMessageAt,
+        }
+        const rest = prev.filter((_, i) => i !== idx)
+        return [updated, ...rest]  // move para o topo
+      })
+    }
+    window.addEventListener('tcrm:new-message', handler)
+    return () => window.removeEventListener('tcrm:new-message', handler)
+  }, [])
+
   // Sobe lead para o topo quando chega mensagem nova
   useSocket('new_message', ({ conversationId, message, content, lastMessageAt, isInbound }) => {
     const id = String(conversationId)

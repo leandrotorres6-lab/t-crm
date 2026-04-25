@@ -11,22 +11,30 @@ export function getSocket() {
     socket = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelay: 500,       // reconecta mais rápido após queda
+      reconnectionDelayMax: 3000,   // máximo 3s entre tentativas
       reconnectionAttempts: Infinity,
-      timeout: 20000,
-      // Mobile: aumenta ping interval para reduzir tráfego de fundo
-      pingInterval: 25000,
-      pingTimeout: 20000,
+      timeout: 10000,
+      pingInterval: 8000,           // ping a cada 8s — Railway fecha após 30s de inatividade
+      pingTimeout: 10000,
     })
     socket.on('connect', () => {
-      console.log('[Socket] ✅ Conectado ao backend')
-      // Solicita snapshot de unread ao conectar (primeira vez e reconexões)
+      console.log('[Socket] ✅ Conectado:', socket.id)
+      // Solicita snapshot de unread + mensagens perdidas durante desconexão
       socket.emit('sync_request')
     })
-    socket.on('disconnect', (reason) => console.warn('[Socket] ❌ Desconectado:', reason))
-    socket.on('connect_error', (e) => console.warn('[Socket] Erro de conexão:', e.message))
-    socket.on('reconnect', (n) => console.log(`[Socket] Reconectado após ${n} tentativas`))
+    socket.on('disconnect', (reason) => {
+      console.warn('[Socket] ❌ Desconectado:', reason)
+      // 'transport close' = Railway fechou a conexão — reconecta imediatamente
+      if (reason === 'transport close' || reason === 'transport error') {
+        socket.connect()
+      }
+    })
+    socket.on('connect_error', (e) => console.warn('[Socket] Erro:', e.message))
+    socket.on('reconnect', (n) => {
+      console.log(`[Socket] Reconectado após ${n} tentativa(s)`)
+      socket.emit('sync_request')  // re-sincroniza unread após reconexão
+    })
   }
   return socket
 }

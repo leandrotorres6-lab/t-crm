@@ -45,8 +45,8 @@ if (!CHATWOOT_READY) console.log('Modo mock — configure backend/.env')
 // ─── Socket.io ───────────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
-  pingTimeout: 20000,
-  pingInterval: 10000,  // ping a cada 10s para manter conexão viva
+  pingTimeout: 10000,   // 10s para considerar conexão morta
+  pingInterval: 8000,   // ping a cada 8s — bem abaixo do timeout de 30s do Railway
   transports: ['websocket', 'polling'],
 })
 io.on('connection', s => {
