@@ -279,28 +279,14 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener('tcrm:lead-updated', handler)
   }, [])
 
-  // Força reload quando Service Worker atualiza (nova versão deployada)
+  // Registra SW e verifica atualizações periodicamente
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
-    navigator.serviceWorker.ready.then(reg => {
-      // Verifica atualizações a cada 30s
-      const check = () => reg.update().catch(() => {})
-      const iv = setInterval(check, 30000)
-      check()
-
-      // Quando SW atualiza, manda SKIP_WAITING e recarrega a página
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing
-        if (!newWorker) return
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'activated') {
-            console.log('[SW] Nova versão detectada — recarregando...')
-            window.location.reload()
-          }
-        })
-      })
-      return () => clearInterval(iv)
+    let iv = null
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
+      iv = setInterval(() => reg.update().catch(() => {}), 60000)
     }).catch(() => {})
+    return () => { if (iv) clearInterval(iv) }
   }, [])
 
   // Escuta evento de sessão expirada (token 401)
