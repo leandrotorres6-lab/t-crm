@@ -19,6 +19,7 @@ export function AppProvider({ children }) {
   const [unreadCounts, setUnreadCounts] = useState({})
   // Deduplicação: guarda IDs de mensagens já processadas (últimos 200)
   const processedMessages = React.useRef(new Set())
+  const processedConversations = React.useRef(new Set())  // dedup de new_conversation
   // Ref da conversa aberta — não precisa de state (evita re-render)
   const activeConvId = React.useRef(null)
   // Mapa de updatedAt por conversa — árbitro de conflitos de unread
