@@ -228,24 +228,50 @@ export function AppProvider({ children }) {
     }
   })
 
-  // Replay: lead atualizado durante desconexão — atualiza estado atomicamente
+  // Set global de dedup para notificações do replay — evita duplicar com new_message
+  const notifiedReplay = React.useRef(new Set())
+
+  // Replay: lead atualizado durante desconexão — atualiza estado + notifica se recente
   useEffect(() => {
     const handler = (e) => {
       const lead = e.detail
       if (!lead?.id) return
       const id = String(lead.id)
-      // Atualiza unread se veio com dado
+
+      // 1. Atualiza unread
       if (lead.unreadCount !== undefined) {
         setUnreadCounts(prev => {
           if (prev[id] === lead.unreadCount) return prev
           return { ...prev, [id]: lead.unreadCount || 0 }
         })
       }
-      // Propaga para Kanban e Conversas via evento de movimento se coluna mudou
+
+      // 2. Move card no Kanban se coluna mudou
       if (lead.column) {
         window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
           detail: { leadId: id, fromCol: null, toCol: lead.column, leadData: lead }
         }))
+      }
+
+      // 3. Notifica apenas se: evento recente (<15s) + tem unread + não foi notificado ainda
+      const eventAge = lead.updatedAt ? Date.now() - new Date(lead.updatedAt).getTime() : 99999
+      const deduKey = `${id}_${lead.updatedAt || lead.lastMessageAt || ''}`
+      const hasUnread = (lead.unreadCount || 0) > 0
+
+      if (hasUnread && eventAge < 15000 && !notifiedReplay.current.has(deduKey)) {
+        notifiedReplay.current.add(deduKey)
+        setTimeout(() => notifiedReplay.current.delete(deduKey), 60000)
+
+        const name = lead.name || 'Cliente'
+        const text = lead.lastMessage || 'Nova mensagem'
+        console.log(`[Replay Notify] ${name}: ${text.slice(0,40)} (${Math.round(eventAge/1000)}s atrás)`)
+
+        playSound('message')
+        try { navigator.vibrate?.([80]) } catch {}
+        showNotification(`💬 ${name}`, text.slice(0, 100), {
+          tag: `msg-${id}`,
+          renotify: true,
+        })
       }
     }
     window.addEventListener('tcrm:lead-updated', handler)
