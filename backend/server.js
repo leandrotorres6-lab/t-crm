@@ -528,7 +528,16 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
       cw.setKanbanLabel(id, 'agendado').catch(() => {})
       cw.reopenConversation(id).catch(() => {})
     }
-    io.emit('lead_moved', { id, column: 'agendado', scheduledAt })
+    // Busca lead completo para emitir no evento
+    let leadData = null
+    const cached = store.getCache()
+    if (cached?.[String(id)]) leadData = { ...cached[String(id)], column: 'agendado', scheduledAt, observacao }
+    else if (db.DB_READY()) leadData = await db.getLeadById(id).catch(() => null)
+    if (leadData) leadData = { ...leadData, column: 'agendado', scheduledAt, observacao }
+
+    io.emit('lead_moved', { id, column: 'agendado', fromColumn: leadData?.column, lead: leadData })
+    io.emit('schedule_created', { id, scheduledAt, observacao, lead: leadData })
+    console.log(`[Schedule] conv=${id} agendado para ${scheduledAt}`)
     res.json({ id, column: 'agendado', scheduledAt, observacao })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -546,7 +555,14 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
       db.updateMeta(id, { column: 'aguardando_pagamento', paymentDueDate: paymentDueDate || null, observacao: observacao || '' }).catch(() => {})
     }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'aguardando_pagamento').catch(e => console.warn(e.message))
-    io.emit('lead_moved', { id, column: 'aguardando_pagamento', paymentDueDate })
+    // Busca lead completo para emitir no evento
+    let payLead = null
+    const payCache = store.getCache()
+    if (payCache?.[String(id)]) payLead = { ...payCache[String(id)], column: 'aguardando_pagamento', paymentDueDate, observacao }
+    else if (db.DB_READY()) payLead = await db.getLeadById(id).catch(() => null)
+    if (payLead) payLead = { ...payLead, column: 'aguardando_pagamento', paymentDueDate, observacao }
+
+    io.emit('lead_moved', { id, column: 'aguardando_pagamento', fromColumn: payLead?.column, lead: payLead })
     res.json({ id, column: 'aguardando_pagamento', paymentDueDate, observacao })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1532,10 +1548,10 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
 
     if (isInbound) {
       // unread no store (síncrono) — emite imediatamente com valor local
-      const count = store.incrementUnread(conversationId)
-      io.emit('unread_update', { conversationId, count, updatedAt: now })
+      const unreadCount = store.incrementUnread(conversationId)
+      io.emit('unread_update', { conversationId, count: unreadCount, updatedAt: now })
 
-      // Push em background — não bloqueia nem o socket nem o res.json
+      // Push em background
       const contactName = data.conversation?.meta?.sender?.name || 'Cliente'
       setImmediate(() => notifyInbound(data.id || data.message_id, conversationId, contactName, content))
     }
@@ -1543,16 +1559,15 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     // ── 3. Supabase em background — não bloqueia resposta do webhook ──────────
     if (db.DB_READY()) {
       setImmediate(async () => {
-        const tDb = Date.now()
-        db.updateLastMessage(conversationId, content, now).catch(() => {})
-        if (isInbound) {
-          const result = await db.incrementUnread(conversationId).catch(() => null)
-          // Se Supabase retornou updatedAt mais recente, sincroniza os clientes
-          if (result?.updated_at && result.updated_at !== now) {
-            io.emit('unread_update', { conversationId, count: store.getUnread?.(conversationId) || count, updatedAt: result.updated_at })
+        try {
+          db.updateLastMessage(conversationId, content, now).catch(() => {})
+          if (isInbound) {
+            const result = await db.incrementUnread(conversationId).catch(() => null)
+            if (result?.updated_at && result.updated_at !== now) {
+              io.emit('unread_update', { conversationId, count: store.getUnread(conversationId), updatedAt: result.updated_at })
+            }
           }
-          console.log(`[WH] supabase unread +${Date.now()-tDb}ms conv=${conversationId}`)
-        }
+        } catch (e) { console.warn('[WH] Supabase background error:', e.message) }
       })
     }
 
