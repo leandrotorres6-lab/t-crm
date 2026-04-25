@@ -1,7 +1,7 @@
 // Service Worker — T-CRM Push Notifications
 // Versão: 2.0 — badge + agrupamento + background sync
 
-const CACHE_NAME = 't-crm-sw-v3'  // bump para forçar atualização em todos os dispositivos
+const CACHE_NAME = 't-crm-sw-v4'
 
 // ── Push recebido (app fechado ou em background) ──────────────────────────────
 self.addEventListener('push', event => {

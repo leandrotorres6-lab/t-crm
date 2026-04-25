@@ -40,6 +40,8 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-icon" href="/icon-192.png" />
         {/* Performance hints */}
         <meta httpEquiv="x-dns-prefetch-control" content="on" />
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
         <link rel="dns-prefetch" href="https://ads.pvcorretor01.com.br" />
       </head>
       <body className="h-full">
