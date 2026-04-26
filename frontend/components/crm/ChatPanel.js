@@ -589,8 +589,13 @@ function LabelsPanel({ conversationId, initialLabels, currentColumn, onColumMigr
   useEffect(() => {
     if (!showAdd) return
     const fn = e => { if (ref.current && !ref.current.contains(e.target)) setShowAdd(false) }
+    // touchstart cobre mobile; mousedown cobre desktop
     document.addEventListener('mousedown', fn)
-    return () => document.removeEventListener('mousedown', fn)
+    document.addEventListener('touchstart', fn, { passive: true })
+    return () => {
+      document.removeEventListener('mousedown', fn)
+      document.removeEventListener('touchstart', fn)
+    }
   }, [showAdd])
 
   // Apenas labels não-kanban para exibir

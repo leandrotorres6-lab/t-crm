@@ -52,12 +52,24 @@ export function AppProvider({ children }) {
   // Movimento otimista
   const applyPendingMove = useCallback((lead, toCol) => {
     setPendingMoves(prev => ({ ...prev, [lead.id]: { fromCol: lead.column, toCol, lead: { ...lead, column: toCol } } }))
-    // Invalida cache das duas colunas para forçar reload limpo depois
+    // Invalida cache das duas colunas
     try {
       const { kanbanCache } = require('../lib/kanbanCache')
       kanbanCache.invalidate(lead.column)
       kanbanCache.invalidate(toCol)
     } catch {}
+    // Dispara tcrm:lead-moved IMEDIATAMENTE com lead completo
+    // A coluna destino insere o card sem esperar o socket voltar
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+        detail: {
+          leadId: String(lead.id),
+          fromCol: lead.column,
+          toCol,
+          leadData: { ...lead, column: toCol },
+        }
+      }))
+    }
   }, [])
 
   const clearPendingMove = useCallback((leadId) => {
@@ -179,10 +191,11 @@ export function AppProvider({ children }) {
     console.log('[Socket] new_message RECEBIDO:', { conversationId, isInbound, content: (content||'').slice(0,30) })
     
     // Deduplicação por message_id — evita duplo processamento em reconexão
-    const msgId = message?.id || `${conversationId}-${lastMessageAt}`
+    // Dedup: usa message.id se disponível, senão content+convId+ts (mais único que só ts)
+    const msgId = message?.id
+      || `${conversationId}:${(content||'').slice(0,20)}:${lastMessageAt}`
     if (processedMessages.current.has(msgId)) {
-      console.log(`[Socket] DUPLICADO ignorado msgId=${msgId}`)
-      return
+      return  // silencioso — duplicata normal em reconexão
     }
     processedMessages.current.add(msgId)
     // Mantém só os últimos 200 para evitar memory leak
