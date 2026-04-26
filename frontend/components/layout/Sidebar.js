@@ -30,6 +30,7 @@ export default function Sidebar({ mobileOverlay = false }) {
   const currentUser = currentAgent || { name: '...', email: '', avatar: '?', status: 'online' }
   const { theme, toggleTheme } = useTheme()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
   const [globalBadges, setGlobalBadges] = useState({ unread: 0, agendamento: 0, pagamento: 0 })
 
   const BADGE_COLORS = {
@@ -77,13 +78,32 @@ export default function Sidebar({ mobileOverlay = false }) {
       }
     }
     computeBadges()
-    const iv = setInterval(computeBadges, 5 * 60 * 1000)
-    return () => clearInterval(iv)
+    const onFocus = () => computeBadges()
+    window.addEventListener('focus', onFocus)
+    const iv = setInterval(computeBadges, 10 * 60 * 1000)
+    return () => { clearInterval(iv); window.removeEventListener('focus', onFocus) }
   }, [currentAgent?.id])
   const [avatarUrl, setAvatarUrl] = useState(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef(null)
   const { supported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePush(currentAgent?.id)
+
+  // Fecha menu do usuário ao clicar fora ou pressionar Escape
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const handler = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false)
+    }
+    const keyHandler = (e) => { if (e.key === 'Escape') setUserMenuOpen(false) }
+    document.addEventListener('mousedown',  handler)
+    document.addEventListener('touchstart', handler, { passive: true })
+    document.addEventListener('keydown',    keyHandler)
+    return () => {
+      document.removeEventListener('mousedown',  handler)
+      document.removeEventListener('touchstart', handler)
+      document.removeEventListener('keydown',    keyHandler)
+    }
+  }, [userMenuOpen])
 
   // Fecha sidebar mobile ao clicar fora
   useEffect(() => {
@@ -304,7 +324,7 @@ export default function Sidebar({ mobileOverlay = false }) {
         </button>
 
         {/* User */}
-        <div className="relative">
+        <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => sidebarOpen && setUserMenuOpen(o => !o)}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-all"

@@ -364,8 +364,10 @@ export default function KanbanBoard() {
           onDragOver={handleDragOver} onDragEnd={stopAutoScroll}>
           <div className="flex gap-3 p-4 h-full" style={{ minWidth: 'max-content' }}>
             {ALL_COLUMNS.map(col => (
-              <KanbanColumn key={col} columnId={col}
-                refreshToken={colRefresh[col] || 0} onDrop={handleDrop} />
+              <div key={col} style={{ contentVisibility: 'auto', containIntrinsicSize: '280px 600px' }}>
+                <KanbanColumn columnId={col}
+                  refreshToken={colRefresh[col] || 0} onDrop={handleDrop} />
+              </div>
             ))}
           </div>
         </div>
