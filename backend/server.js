@@ -52,37 +52,50 @@ const io = new Server(server, {
 io.on('connection', s => {
   console.log(`[Socket] Cliente conectado: ${s.id} (total: ${io.engine.clientsCount})`)
 
-  // Snapshot de unread ao conectar/reconectar — elimina janela cega
-  // Aceita { since } opcional para replay de leads atualizados após desconexão
-  s.on('sync_request', async ({ since } = {}) => {
-    try {
-      // 1. Unread snapshot — sempre
-      const state = store._state()
-      const unread = {}
-      Object.entries(state.unread || {}).forEach(([id, count]) => {
-        if (count > 0) unread[id] = count
+  // Cada cliente entra em sua room de agente ao autenticar
+  // Permite enviar eventos só para quem precisa
+  s.on('join_room', ({ agentId, role }) => {
+    if (agentId) {
+      s.join(`agent_${agentId}`)
+      s.data.agentId = String(agentId)
+      s.data.role    = role || 'vendedor'
+      console.log(`[Socket] ${s.id.slice(0,8)} → room agent_${agentId} (${role})`)
+    }
+    // Supervisores entram em room especial
+    if (role === 'supervisor' || role === 'admin') {
+      s.join('supervisors')
+    }
+  })
+
+  // Snapshot de unread — responde IMEDIATAMENTE (síncrono), depois replay async
+  s.on('sync_request', ({ since } = {}) => {
+    // 1. Unread do store — síncrono, zero latência
+    const state = store._state()
+    const unread = {}
+    Object.entries(state.unread || {}).forEach(([id, count]) => {
+      if (count > 0) unread[id] = count
+    })
+    s.emit('sync_state', { unreadCounts: unread })
+    console.log(`[Socket] Sync: ${Object.keys(unread).length} unread`)
+
+    // 2. Replay Supabase — em background, não bloqueia
+    if (since && db.DB_READY()) {
+      setImmediate(async () => {
+        try {
+          const sinceIso = new Date(Number(since)).toISOString()
+          const { data, error } = await db._supabase()
+            .from('leads')
+            .select('id,kanban_column,unread_count,last_message,last_message_at,updated_at,assigned_to,assignee_name')
+            .gt('updated_at', sinceIso)
+            .order('updated_at', { ascending: false })
+            .limit(30)
+          if (!error && data?.length) {
+            s.emit('sync_data', data.map(row => db.fromRow(row)))
+            console.log(`[Sync] Replay ${data.length} leads para ${s.id.slice(0,8)}`)
+          }
+        } catch {}
       })
-      s.emit('sync_state', { unreadCounts: unread })
-
-      // 2. Replay de leads atualizados desde a desconexão (se since informado)
-      if (since && db.DB_READY()) {
-        const sinceIso = new Date(Number(since)).toISOString()
-        const { data, error } = await db._supabase()
-          .from('leads')
-          .select('*')
-          .gt('updated_at', sinceIso)
-          .order('updated_at', { ascending: false })
-          .limit(50)
-
-        if (!error && data?.length) {
-          const items = data.map(row => db.fromRow(row))
-          s.emit('sync_data', items)
-          console.log(`[Sync] Replay ${items.length} lead(s) desde ${sinceIso.slice(0,19)} para ${s.id}${items.length === 50 ? ' ⚠️ limite atingido' : ''}`)
-        }
-      }
-
-      console.log(`[Socket] Sync enviado: ${Object.keys(unread).length} unread (since=${since ? new Date(Number(since)).toISOString().slice(0,19) : 'n/a'})`)
-    } catch (e) { console.warn('[Sync] Erro:', e.message) }
+    }
   })
 
   s.on('disconnect', (reason) => {
@@ -1293,43 +1306,30 @@ app.get('/api/search', async (req, res) => {
       }
     } catch (e) { console.warn('[Search] Cache error:', e.message) }
 
-    // ── CAMADA 3: Chatwoot API — complementar ao Supabase ──
-    // Sempre consultado, mas addResult só substitui se Chatwoot for mais recente
-    if (CHATWOOT_READY) {
+    // ── CAMADA 3: Chatwoot API — só se Supabase retornou poucos resultados ──
+    // Evita chamadas pesadas quando o banco já tem os dados
+    const supabaseCount = results.length // resultados até aqui
+    if (CHATWOOT_READY && supabaseCount < 4) {
       try {
+        // Uma única chamada de lista — sem getContactConversations por contato
         const { contacts } = await cw.getContactsList({ q: qTrim, page: 1 })
-        for (const contact of (contacts || []).slice(0, 10)) {
-          const phone = contact.phone_number || ''
-          const name  = contact.name || ''
+        for (const contact of (contacts || []).slice(0, 8)) {
+          const phone     = contact.phone_number || ''
+          const name      = contact.name || ''
           const phoneNorm = normalizePhone(phone)
-          const convs = await cw.getContactConversations(contact.id)
-          if (convs?.length) {
-            // Usa a conversa mais recente desse contato
-            const conv = convs.sort((a, b) => (b.last_activity_at || 0) - (a.last_activity_at || 0))[0]
-            const id = String(conv.id)
-            if (seenIds.has(id)) continue
-            seenIds.add(id)
-            const lastMsg = conv.last_non_activity_message
+          // Verifica se já temos esse contato pelo telefone (não faz chamada extra)
+          const alreadyByPhone = phoneNorm.length >= 6 &&
+            Array.from(phoneMap.keys()).some(k => normalizePhone(k).includes(phoneNorm) || phoneNorm.includes(normalizePhone(k)))
+          if (alreadyByPhone) continue
+          // Adiciona como contato sem conversa (não chama getContactConversations)
+          const cKey = 'c-' + contact.id
+          if (!seenIds.has(cKey)) {
+            seenIds.add(cKey)
             addResult({
-              id,
-              name:          name || phone,
-              phone,
-              avatar:        name.slice(0, 2).toUpperCase() || '??',
-              lastMessage:   lastMsg?.content || '',
-              lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at * 1000).toISOString() : null,
-              column:        null,
-              status:        conv.status || 'resolved',
-              assignedTo:    conv.meta?.assignee?.id || null,
-              assigneeName:  conv.meta?.assignee?.name || '',
-              source:        'chatwoot',
-              chatwootData:  cw.mapConversation(conv, null),
+              id: cKey, name, phone,
+              avatar: name.slice(0,2).toUpperCase() || '??',
+              column: null, status: 'contact', source: 'contact'
             })
-          } else {
-            const cKey = 'c-' + contact.id
-            if (!seenIds.has(cKey)) {
-              seenIds.add(cKey)
-              addResult({ id: cKey, name, phone, avatar: name.slice(0,2).toUpperCase() || '??', column: null, status: 'contact', source: 'contact' })
-            }
           }
         }
       } catch (e) { console.warn('[Search] Chatwoot error:', e.message) }

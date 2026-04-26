@@ -24,6 +24,17 @@ export function getSocket() {
     socket.on('connect', () => {
       console.log('[Socket] ✅ Conectado:', socket.id)
       socket.emit('sync_request')
+      // Entra na room do agente para receber eventos filtrados
+      try {
+        const agentRaw = localStorage.getItem('tcrm_agent')
+        if (agentRaw) {
+          const agent = JSON.parse(agentRaw)
+          if (agent?.id) {
+            socket.emit('join_room', { agentId: String(agent.id), role: agent.role || 'vendedor' })
+            console.log('[Socket] 🏠 Room: agent_' + agent.id)
+          }
+        }
+      } catch {}
     })
     socket.on('disconnect', (reason) => {
       console.warn('[Socket] ❌ Desconectado:', reason, '— lastEvent:', new Date(socket._lastEventAt).toISOString().slice(11,19))
@@ -35,6 +46,14 @@ export function getSocket() {
     socket.on('reconnect', (n) => {
       console.log(`[Socket] Reconectado após ${n} tentativa(s)`)
       socket.emit('sync_request', { since: socket._lastEventAt })
+      // Re-entra na room após reconexão
+      try {
+        const agentRaw = localStorage.getItem('tcrm_agent')
+        if (agentRaw) {
+          const agent = JSON.parse(agentRaw)
+          if (agent?.id) socket.emit('join_room', { agentId: String(agent.id), role: agent.role || 'vendedor' })
+        }
+      } catch {}
     })
 
     // Mobile: reconecta quando usuário volta ao app após ficar em background

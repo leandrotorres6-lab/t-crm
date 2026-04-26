@@ -111,6 +111,11 @@ function KanbanCard({ lead, columnId }) {
         transform: pressing ? 'scale(0.98)' : 'scale(1)',
         transition: 'transform 0.1s, opacity 0.1s',
         boxShadow: unread > 0 ? `0 0 0 1px ${color}20` : 'none',
+        // content-visibility: auto = browser pula render de cards fora da viewport
+        // Equivale a virtualização sem biblioteca — ganho imediato no mobile
+        contentVisibility: 'auto',
+        containIntrinsicSize: '0 90px',  // altura estimada do card
+        contain: 'layout style',
       }}>
 
       {/* Header */}
