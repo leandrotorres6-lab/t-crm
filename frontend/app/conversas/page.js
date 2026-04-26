@@ -215,6 +215,8 @@ function ConversasList() {
         lastMessage: text || prev[idx].lastMessage,
         lastMessageAt: ts,
         unreadCount: isInbound !== false ? (prev[idx].unreadCount || 0) + 1 : prev[idx].unreadCount || 0,
+        lastMsgIsOutbound: isInbound === false,
+        lastMsgType: 'text',
         _tick: Date.now(),
       }
       const updated = [card, ...prev.filter((_, i) => i !== idx)]

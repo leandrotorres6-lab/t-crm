@@ -73,7 +73,7 @@ export default function SearchBar({ onResults, onClear, autoFocus = false }) {
   // Debounce único — chamado tanto por mudança de query quanto de filtros
   const scheduleSearch = useCallback(() => {
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(executeSearch, 380)
+    debounceRef.current = setTimeout(executeSearch, 450)
   }, [executeSearch])
 
   // Handler do input — atualiza ref E state, depois agenda busca
@@ -115,11 +115,26 @@ export default function SearchBar({ onResults, onClear, autoFocus = false }) {
     abortRef.current?.abort()
   }, [])
 
+  const filterRef    = useRef(null)
   const hasActive    = query || filters.column || filters.assignee || filters.product
   const activeFilters = [filters.column, filters.assignee, filters.product].filter(Boolean).length
 
+  // Fecha dropdown de filtros ao tocar/clicar fora — cobre mobile e desktop
+  useEffect(() => {
+    if (!showFilters) return
+    const handler = (e) => {
+      if (filterRef.current && !filterRef.current.contains(e.target)) setShowFilters(false)
+    }
+    document.addEventListener('mousedown',  handler)
+    document.addEventListener('touchstart', handler, { passive: true })
+    return () => {
+      document.removeEventListener('mousedown',  handler)
+      document.removeEventListener('touchstart', handler)
+    }
+  }, [showFilters])
+
   return (
-    <div className="relative">
+    <div className="relative" ref={filterRef}>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -144,12 +159,14 @@ export default function SearchBar({ onResults, onClear, autoFocus = false }) {
               outline: 'none',
             }}
           />
+          {/* Spinner à esquerda do X quando buscando */}
           {searching && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
+            <div className="absolute right-8 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
           )}
-          {!searching && hasActive && (
-            <button onClick={clear} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-red-400 transition-colors">
-              <X size={14} />
+          {/* X sempre visível quando há conteúdo — cancela busca em andamento */}
+          {hasActive && (
+            <button onClick={clear} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-red-400 transition-colors p-0.5">
+              <X size={13} />
             </button>
           )}
         </div>

@@ -42,17 +42,25 @@ function ContextMenu({ menu, agents, onClose, onMarkUnread, onAssign, onMove, on
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('mousedown',  handler)
+    document.addEventListener('touchstart', handler, { passive: true })
+    return () => {
+      document.removeEventListener('mousedown',  handler)
+      document.removeEventListener('touchstart', handler)
+    }
   }, [onClose])
 
-  const x = Math.min(menu.x, window.innerWidth - 220)
-  const y = Math.min(menu.y, window.innerHeight - 280)
+  // Posição segura — não sai da tela nem em mobile
+  const isMobile   = typeof window !== 'undefined' && window.innerWidth < 768
+  const menuWidth  = 200
+  const menuHeight = 300
+  const x = Math.max(4, Math.min(menu.x, window.innerWidth  - menuWidth  - 4))
+  const y = Math.max(4, Math.min(menu.y, window.innerHeight - menuHeight - 4))
 
   return (
     <div ref={ref}
       className="fixed z-[9999] rounded-xl shadow-2xl py-1 overflow-visible"
-      style={{ top: y, left: x, minWidth: '190px',
+      style={{ top: y, left: x, minWidth: `${menuWidth}px`,
         backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}
       onContextMenu={e => e.preventDefault()}>
 
@@ -80,8 +88,17 @@ function ContextMenu({ menu, agents, onClose, onMarkUnread, onAssign, onMove, on
           <span className="text-[var(--text-muted)]" style={{fontSize:'10px'}}>▶</span>
         </button>
         {showMove && (
-          <div className="absolute left-full top-0 rounded-xl shadow-2xl py-1"
-            style={{ minWidth:'170px', backgroundColor:'var(--bg-card)', border:'1px solid var(--border)' }}>
+          <div className="absolute rounded-xl shadow-2xl py-1"
+            style={{
+              minWidth:'170px',
+              backgroundColor:'var(--bg-card)',
+              border:'1px solid var(--border)',
+              // Mobile: abre abaixo; Desktop: abre à direita
+              ...(typeof window !== 'undefined' && window.innerWidth < 768
+                ? { top: '100%', left: 0, zIndex: 1 }
+                : { left: '100%', top: 0 }
+              )
+            }}>
             {Object.entries(COL_LABELS).filter(([id]) => id !== menu.lead.column).map(([id, label]) => (
               <button key={id} onClick={() => { onMove(menu.lead, id); onClose() }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--bg-hover)] text-left transition-colors">
@@ -123,6 +140,7 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   const { currentAgent, setScheduleModal, setPaymentModal, pendingMoves, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
   const [contextMenu, setContextMenu] = useState(null)
   const [pullY, setPullY] = useState(0)
+  const pullYRef = useRef(0)
   const [pulling, setPulling] = useState(false)
   const pullStartY = useRef(0)
   const [agents, setAgents] = useState([])

@@ -68,10 +68,11 @@ export default function MobileNav() {
   }, [unreadCounts])
 
   useEffect(() => {
+    if (!currentAgent?.id) return
     const compute = async () => {
       try {
         const [schedResp, payResp] = await Promise.all([
-          api.getScheduled(currentAgent?.id, currentAgent?.role),
+          api.getScheduled(currentAgent.id, currentAgent.role),
           api.getPagamentos(),
         ])
         const today = new Date().toDateString()
@@ -79,8 +80,9 @@ export default function MobileNav() {
         const pay   = Array.isArray(payResp)   ? payResp   : []
         setBadges(prev => ({
           ...prev,
-          agendamento: sched.filter(l => l.scheduledAt && new Date(l.scheduledAt).toDateString() === today).length,
-          pagamento:   pay.filter(l => {
+          agendamento: sched.filter(l => l.scheduledAt &&
+            new Date(l.scheduledAt).toDateString() === today).length,
+          pagamento: pay.filter(l => {
             if (!l.paymentDueDate) return false
             const d = new Date(l.paymentDueDate)
             return d.toDateString() === today || d < new Date()
@@ -88,10 +90,13 @@ export default function MobileNav() {
         }))
       } catch {}
     }
+    // Computa ao montar e quando volta ao foco (economiza chamadas desnecessárias)
     compute()
-    const iv = setInterval(compute, 5 * 60 * 1000)
-    return () => clearInterval(iv)
-  }, [currentAgent?.id])
+    const onFocus = () => compute()
+    window.addEventListener('focus', onFocus)
+    const iv = setInterval(compute, 10 * 60 * 1000)  // 10min em vez de 5min
+    return () => { clearInterval(iv); window.removeEventListener('focus', onFocus) }
+  }, [currentAgent?.id, currentAgent?.role])
 
   // ── Fecha drawer ao clicar fora ──────────────────────────────────────────────
   useEffect(() => {
