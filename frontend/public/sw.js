@@ -1,9 +1,10 @@
-// Service Worker — T-CRM Push Notifications
-// Versão: 2.0 — badge + agrupamento + background sync
+// Service Worker T-CRM — v6
+// badge numérico + notificação confiável + visibilitychange
 
-const CACHE_NAME = 't-crm-sw-v5'
+const CACHE_NAME = 't-crm-sw-v6'
+let _badgeCount = 0  // contador local de não lidas
 
-// ── Push recebido (app fechado ou em background) ──────────────────────────────
+// ── Push recebido (app fechado ou background) ─────────────────────────────────
 self.addEventListener('push', event => {
   if (!event.data) return
 
@@ -11,26 +12,39 @@ self.addEventListener('push', event => {
   try { payload = event.data.json() }
   catch { payload = { title: 'T-CRM', body: event.data.text() } }
 
-  const { title = 'T-CRM', body = 'Nova mensagem', data = {}, tag, renotify } = payload
+  const {
+    title = 'T-CRM',
+    body  = 'Nova mensagem',
+    data  = {},
+    tag,
+    renotify,
+    badgeCount,
+  } = payload
 
-  // Atualiza badge do ícone — incrementa +1 (será corrigido quando app abrir)
-  try { navigator.setAppBadge(1) } catch {}
+  // Incrementa contador de badge
+  if (badgeCount !== undefined) {
+    _badgeCount = badgeCount
+  } else {
+    _badgeCount = Math.max(1, _badgeCount + 1)
+  }
+
+  // Atualiza badge com número real
+  try { navigator.setAppBadge(_badgeCount) } catch {}
 
   const options = {
     body,
-    icon:             '/icon-192.png',
-    badge:            '/icon-192.png',
-    data:             { ...data, url: data.url || '/conversas' },
-    vibrate:          [200, 100, 200, 100, 200],
-    requireInteraction: true,
-    tag:              tag || `conv-${data.conversationId || 'default'}`,
-    renotify:         renotify !== false,  // toca som mesmo se já existe notificação com mesma tag
+    icon:              '/icon-192.png',
+    badge:             '/icon-192.png',
+    data:              { ...data, url: data.url || '/conversas' },
+    vibrate:           [150, 80, 150],
+    requireInteraction: false,
+    tag:               tag || `conv-${data.conversationId || 'default'}`,
+    renotify:          renotify !== false,
+    silent:            false,
     actions: [
       { action: 'open',    title: '💬 Abrir' },
       { action: 'dismiss', title: 'Dispensar' },
     ],
-    // Silent: false garante som no Android
-    silent: false,
   }
 
   event.waitUntil(
@@ -38,7 +52,7 @@ self.addEventListener('push', event => {
   )
 })
 
-// ── Clique na notificação ────────────────────────────────────────────────────
+// ── Clique na notificação ─────────────────────────────────────────────────────
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   if (event.action === 'dismiss') return
@@ -48,22 +62,17 @@ self.addEventListener('notificationclick', event => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      // Limpa badge ao abrir
-      if (self.navigator?.clearAppBadge) {
-        self.navigator.clearAppBadge().catch(() => {})
-      }
+      // Zera badge ao abrir
+      _badgeCount = 0
+      try { navigator.clearAppBadge() } catch {}
 
-      // Foca aba existente do T-CRM
       for (const client of list) {
         if (client.url.includes(self.location.origin)) {
           client.focus()
-          if (conversationId) {
-            client.postMessage({ type: 'open-conversation', conversationId, url: target })
-          }
+          client.postMessage({ type: 'open-conversation', conversationId, url: target })
           return
         }
       }
-      // Abre nova aba
       return clients.openWindow(
         conversationId
           ? `${self.location.origin}${target}?conv=${conversationId}`
@@ -73,18 +82,20 @@ self.addEventListener('notificationclick', event => {
   )
 })
 
-// ── Mensagem do app → SW (badge manual) ──────────────────────────────────────
+// ── Mensagem do app → SW ──────────────────────────────────────────────────────
 self.addEventListener('message', event => {
   const { type, count } = event.data || {}
 
   if (type === 'SET_BADGE') {
+    _badgeCount = count || 0
     try {
-      if (count > 0) navigator.setAppBadge(count)
+      if (_badgeCount > 0) navigator.setAppBadge(_badgeCount)
       else navigator.clearAppBadge()
     } catch {}
   }
 
   if (type === 'CLEAR_BADGE') {
+    _badgeCount = 0
     try { navigator.clearAppBadge() } catch {}
   }
 
@@ -93,7 +104,7 @@ self.addEventListener('message', event => {
   }
 })
 
-// ── Instalação e ativação ────────────────────────────────────────────────────
+// ── Instalação e ativação ─────────────────────────────────────────────────────
 self.addEventListener('install', e => {
   e.waitUntil(self.skipWaiting())
 })
@@ -102,10 +113,9 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     Promise.all([
       self.clients.claim(),
-      // Remove caches antigos
       caches.keys().then(keys =>
         Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-      )
+      ),
     ])
   )
 })

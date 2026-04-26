@@ -1503,10 +1503,34 @@ async function sendPushToAssigned(conversationId, title, body, data = {}) {
     } catch {}
   }
 
+  // Calcula total de não lidas para o agente (badge numérico correto)
+  const getBadgeForAgent = (agentId) => {
+    if (!agentId) return null
+    const state = store._state()
+    const unread = state.unread || {}
+    const cache  = store.getCache()
+    if (!cache) return null
+    let total = 0
+    for (const [id, count] of Object.entries(unread)) {
+      if (count > 0) {
+        const lead = cache[id]
+        if (!lead || String(lead.assignedTo) === String(agentId)) {
+          total += count
+        }
+      }
+    }
+    return total || null
+  }
+
   let sent = 0
   const sendWithRetry = async (deviceKey, agentId, sub, retries = 2) => {
     try {
-      await webpush.sendNotification(sub, payload)
+      // Inclui badgeCount no payload para o SW exibir número correto
+      const badgeCount = getBadgeForAgent(agentId)
+      const payloadWithBadge = badgeCount !== null
+        ? JSON.stringify({ ...JSON.parse(payload), badgeCount })
+        : payload
+      await webpush.sendNotification(sub, payloadWithBadge)
       console.log(`[Push] 🔔 Enviado: agente=${agentId} device=${deviceKey.slice(0,16)}...`)
       return true
     } catch (err) {

@@ -1,5 +1,5 @@
 'use client'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { kanbanCache } from '../../lib/kanbanCache'
 import KanbanCard from './KanbanCard'
@@ -393,12 +393,19 @@ const KanbanColumn = memo(function KanbanColumn({ columnId, refreshToken, onDrop
   }
 
   const color = COL_COLORS[columnId] || '#3b82f6'
-  const incomingLeads = Object.values(pendingMoves || {})
-    .filter(m => m.toCol === columnId && !leads.find(l => l.id === m.lead.id))
-    .map(m => ({ ...m.lead, column: columnId }))
-  const hiddenIds = new Set(Object.entries(pendingMoves || {}).filter(([, m]) => m.fromCol === columnId).map(([id]) => id))
-  const allLeads = [...incomingLeads, ...leads.filter(l => !hiddenIds.has(l.id))]
-  const displayTotal = Math.max(0, total + incomingLeads.length - hiddenIds.size)
+
+  // useMemo: só recomputa quando leads ou pendingMoves mudam — evita recálculo em todo render
+  const { allLeads, displayTotal } = React.useMemo(() => {
+    const incoming = Object.values(pendingMoves || {})
+      .filter(m => m.toCol === columnId && !leads.find(l => l.id === m.lead.id))
+      .map(m => ({ ...m.lead, column: columnId }))
+    const hidden = new Set(Object.entries(pendingMoves || {})
+      .filter(([, m]) => m.fromCol === columnId).map(([id]) => id))
+    return {
+      allLeads: [...incoming, ...leads.filter(l => !hidden.has(l.id))],
+      displayTotal: Math.max(0, total + incoming.length - hidden.size),
+    }
+  }, [leads, pendingMoves, columnId, total])
 
   // Context menu handlers
   const handleMarkUnread = useCallback((lead) => {

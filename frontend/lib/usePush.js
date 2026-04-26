@@ -68,8 +68,13 @@ export function usePush(agentId) {
       reg.pushManager.getSubscription().then(sub => {
         if (sub) {
           setSubscribed(true)
-          // Re-envia subscription para garantir que o backend tem este dispositivo
-          api.subscribePush(sub.toJSON(), agentId).catch(() => {})
+          // Só re-envia se o endpoint mudou desde o último registro
+          const lastEndpoint = sessionStorage.getItem(`tcrm_push_ep_${agentId}`)
+          if (lastEndpoint !== sub.endpoint) {
+            api.subscribePush(sub.toJSON(), agentId)
+              .then(() => sessionStorage.setItem(`tcrm_push_ep_${agentId}`, sub.endpoint))
+              .catch(() => {})
+          }
         }
       })
     }).catch(() => {})

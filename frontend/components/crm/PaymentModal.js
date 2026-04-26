@@ -64,10 +64,11 @@ export default function PaymentModal({ onConfirm }) {
   const isOverdue = date && new Date(date) < new Date(today)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      data-modal="payment"
+      style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
       <div className="w-full max-w-sm rounded-2xl shadow-2xl animate-slide-up"
-        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', maxHeight: '90dvh', overflowY: 'auto' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">

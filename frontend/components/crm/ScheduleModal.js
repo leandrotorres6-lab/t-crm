@@ -94,10 +94,11 @@ export default function ScheduleModal({ onConfirm }) {
   const today = new Date().toISOString().split('T')[0]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+      data-modal="schedule">
       <div className="w-full max-w-sm rounded-2xl shadow-2xl animate-slide-up"
-        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', maxHeight: '90dvh', overflowY: 'auto' }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
@@ -119,16 +120,27 @@ export default function ScheduleModal({ onConfirm }) {
             <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-1.5 flex items-center gap-1">
               <Calendar size={12} /> Data
             </label>
-            <input type="date" value={date} min={today}
-              onChange={e => setDate(e.target.value)} className="input-theme" />
+            <input
+              type="date"
+              value={date}
+              min={today}
+              onChange={e => setDate(e.target.value)}
+              className="input-theme"
+              style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none' }}
+            />
           </div>
 
           <div>
             <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-1.5 flex items-center gap-1">
               <Clock size={12} /> Horário
             </label>
-            <input type="time" value={time}
-              onChange={e => setTime(e.target.value)} className="input-theme" />
+            <input
+              type="time"
+              value={time}
+              onChange={e => setTime(e.target.value)}
+              className="input-theme"
+              style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none' }}
+            />
           </div>
 
           <div>
