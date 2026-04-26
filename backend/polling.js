@@ -66,11 +66,6 @@ function processMessage(convId, msg, senderFallback) {
     if (isInbound) deps.db.incrementUnread(convId).catch(() => {})
   }
 
-  // Reabre conversa resolvida ao receber inbound (comportamento do Chatwoot)
-  // A conversa vem com status='open' automaticamente do Chatwoot quando cliente responde
-  // Aqui só emitimos evento para o frontend atualizar
-  // (O Chatwoot já reabre automaticamente ao receber mensagem inbound)
-
   // Socket — emite SEMPRE (inbound e outbound)
   deps.io.emit('new_message', {
     conversationId: convId,
@@ -99,8 +94,11 @@ async function poll() {
   if (isPolling || !warmDone) return
   // Webhook ativo recentemente → pula este ciclo
   if (webhookActive) { return }
-  if (isPolling) return  // evita overlap
+  if (isPolling) return
   isPolling = true
+  pollCycleCount++
+  // Log a cada 20 ciclos (~60s) para confirmar que polling está vivo
+  if (pollCycleCount % 20 === 1) console.log(`[Poll] Ciclo #${pollCycleCount} — ativo, verificando...`)
 
   try {
     // Busca 2 páginas (~50 conversas) — cobre mais leads ativos
@@ -176,9 +174,20 @@ async function poll() {
       const newMsgs = await fetchNewMessages(convId, cachedId)
 
       if (!newMsgs.length) {
-        // API não retornou nada novo — avança cursor para evitar loop
         lastProcessedId.set(convId, lastId)
         continue
+      }
+
+      // Se conversa está resolvida e recebeu mensagem nova → reabre automaticamente
+      if (conv.status === 'resolved') {
+        console.log(`[Poll] 🔄 Conversa resolvida ${convId} recebeu mensagem — reabrindo!`)
+        deps.store.setColumn(convId, 'leads')
+        if (deps.cw.reopenConversation) deps.cw.reopenConversation(convId).catch(() => {})
+        if (deps.db.DB_READY?.()) deps.db.updateMeta(convId, { status: 'open', column: 'leads' }).catch(() => {})
+        // Emite new_conversation para aparecer no kanban
+        const mapped = deps.mapConversation(conv, 'leads')
+        deps.io.emit('new_conversation', { ...mapped, unreadCount: newMsgs.length })
+        if (deps.db.DB_READY?.()) deps.db.upsertLead({ ...mapped, unreadCount: newMsgs.length }).catch(() => {})
       }
 
       const senderFallback = conv.meta?.sender?.name || ''

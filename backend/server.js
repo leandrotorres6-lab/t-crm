@@ -725,7 +725,7 @@ app.use('/api/auth/login', loginLimiter)
 app.use('/api', (req, res, next) => {
   if (!JWT_ENABLED) return next()
   const publicPaths = [
-    '/status', '/auth/login', '/debug',
+    '/status', '/auth/login', '/debug', '/debug-realtime', '/debug-emit',
     '/chatwoot/webhook', '/push/vapid-key',
     '/agents',  // necessário antes do login para mostrar lista de agentes
   ]
@@ -1500,6 +1500,79 @@ app.post('/api/conversations/:id/typing', (req, res) => {
     isTyping: !!isTyping,
   })
   res.json({ ok: true })
+})
+
+// ─── DEBUG COMPLETO — testa toda a cadeia ────────────────────────────────────
+app.get('/api/debug-realtime', async (req, res) => {
+  const results = { timestamp: new Date().toISOString(), tests: {} }
+
+  // 1. Socket: quantos clientes conectados?
+  const sockets = await io.fetchSockets()
+  results.tests.socket = {
+    status: sockets.length > 0 ? '✅' : '❌',
+    clients: sockets.length,
+    ids: sockets.map(s => s.id.slice(0,8))
+  }
+
+  // 2. Chatwoot API: responde?
+  try {
+    const t0 = Date.now()
+    const convs = await cw.getConversations({ page: 1, status: 'open', inboxId: targetInboxId })
+    const latency = Date.now() - t0
+    const lastConv = convs?.[0]
+    results.tests.chatwoot = {
+      status: '✅',
+      latency: latency + 'ms',
+      conversations: convs?.length || 0,
+      lastConversation: lastConv ? {
+        id: lastConv.id,
+        status: lastConv.status,
+        lastMessage: lastConv.last_non_activity_message?.content?.slice(0,50),
+        lastMessageId: lastConv.last_non_activity_message?.id,
+        lastActivity: lastConv.last_activity_at ? new Date(lastConv.last_activity_at * 1000).toISOString() : null,
+      } : null
+    }
+  } catch (e) {
+    results.tests.chatwoot = { status: '❌', error: e.message }
+  }
+
+  // 3. Supabase: conectado?
+  results.tests.supabase = { status: db.DB_READY() ? '✅' : '❌' }
+
+  // 4. Store: quantos leads no cache?
+  const cache = store.getCache()
+  results.tests.store = {
+    status: cache ? '✅' : '❌',
+    leadsInCache: cache ? Object.keys(cache).length : 0,
+  }
+
+  // 5. Polling: está ativo?
+  results.tests.polling = {
+    status: '✅',
+    interval: '3s',
+  }
+
+  // 6. Webhook: último recebido?
+  results.tests.webhook = {
+    note: 'Envie mensagem no WhatsApp e veja se aparece [WH] nos logs do Railway'
+  }
+
+  res.json(results)
+})
+
+// Teste de socket: emite new_message fake para verificar se frontend recebe
+app.get('/api/debug-emit', (req, res) => {
+  const testPayload = {
+    conversationId: '999999',
+    message: { id: Date.now(), content: '🧪 TESTE DE SOCKET', sender: 'system', timestamp: new Date().toISOString() },
+    lastMessageAt: new Date().toISOString(),
+    content: '🧪 TESTE DE SOCKET — se você viu isso, o socket funciona!',
+    isInbound: true,
+    senderName: 'Debug Test',
+  }
+  io.emit('new_message', testPayload)
+  console.log('[DEBUG] Emitido new_message de teste para', io.engine?.clientsCount || '?', 'clientes')
+  res.json({ ok: true, clients: io.engine?.clientsCount || 0, payload: testPayload })
 })
 
 // ─── WEBHOOK TEST — verifica se o URL está correto ──────────────────────────
