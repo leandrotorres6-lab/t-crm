@@ -31,7 +31,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap"
-          media="print" onLoad="this.media='all'" />
+          media="all" />
         {/* PWA iOS */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -40,8 +40,7 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-icon" href="/icon-192.png" />
         {/* Performance hints */}
         <meta httpEquiv="x-dns-prefetch-control" content="on" />
-        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta httpEquiv="Pragma" content="no-cache" />
+
         <link rel="dns-prefetch" href="https://ads.pvcorretor01.com.br" />
       </head>
       <body className="h-full">
