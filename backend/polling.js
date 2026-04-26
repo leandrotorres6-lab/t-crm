@@ -97,16 +97,34 @@ function processMessage(convId, msg, senderFallback) {
 // ─── Ciclo principal ──────────────────────────────────────────────────────────
 async function poll() {
   if (isPolling || !warmDone) return
-  // Webhook ativo recentemente → pula este ciclo (evita trabalho duplicado)
+  // Webhook ativo recentemente → pula este ciclo
   if (webhookActive) { return }
+  if (isPolling) return  // evita overlap
   isPolling = true
 
   try {
-    const convs = await deps.cw.getConversations({
-      page: 1, status: 'open',
-      inboxId: deps.targetInboxId || undefined,
-    })
-    if (!convs?.length) { isPolling = false; return }
+    // Busca 2 páginas (~50 conversas) — cobre mais leads ativos
+    let convs = []
+    for (let p = 1; p <= 2; p++) {
+      const page = await deps.cw.getConversations({
+        page: p, status: 'open',
+        inboxId: deps.targetInboxId || undefined,
+      })
+      if (!page?.length) break
+      convs = convs.concat(page)
+    }
+    if (!convs.length) { isPolling = false; return }
+
+    // Verifica se alguma conversa tem mensagem nova
+    let newCount = 0
+    for (const conv of convs) {
+      const cId = String(conv.id)
+      const lm = conv.last_non_activity_message
+      const lId = lm?.id ? Number(lm.id) : 0
+      const cached = lastProcessedId.get(cId) || 0
+      if (lId > cached) newCount++
+    }
+    if (newCount > 0) console.log(`[Poll] 🔍 Ciclo: ${convs.length} conversas, ${newCount} com mensagem nova`)
 
     for (const conv of convs) {
       const convId  = String(conv.id)
@@ -168,10 +186,16 @@ async function poll() {
 // ─── Warmup ───────────────────────────────────────────────────────────────────
 async function warmUp() {
   try {
-    const convs = await deps.cw.getConversations({
-      page: 1, status: 'open',
-      inboxId: deps.targetInboxId || undefined,
-    })
+    // Warmup com 3 páginas — cobre ~75 conversas recentes (não apenas 25)
+    let convs = []
+    for (let p = 1; p <= 3; p++) {
+      const page = await deps.cw.getConversations({
+        page: p, status: 'open',
+        inboxId: deps.targetInboxId || undefined,
+      })
+      if (!page?.length) break
+      convs = convs.concat(page)
+    }
     for (const conv of convs || []) {
       const convId  = String(conv.id)
       const lastMsg = conv.last_non_activity_message
