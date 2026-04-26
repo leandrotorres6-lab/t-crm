@@ -7,8 +7,9 @@ import { api } from '../../lib/api'
 import { useApp } from '../../contexts/AppContext'
 import {
   Calendar, Clock, DollarSign, Loader2, MessageCircle, ChevronRight,
-  Edit2, Check, X, RefreshCw, AlertTriangle, Phone
+  Edit2, Check, X, RefreshCw, AlertTriangle, Phone, Download
 } from 'lucide-react'
+import { exportCSV } from '../../lib/exportCSV'
 import { useRouter } from 'next/navigation'
 
 function timeAgo(dateStr) {
@@ -234,7 +235,15 @@ export default function AguardandoPagamentoPage() {
               <h1 className="text-xl font-bold text-[var(--text-primary)]">Aguardando Pagamento</h1>
               <p className="text-sm text-[var(--text-muted)] mt-0.5">{all.length} leads nesta etapa</p>
             </div>
-            <button onClick={load} className="btn-ghost">
+            <a
+            href={typeof window !== 'undefined' ? api.exportPagamentos() : '#'}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
+            style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}
+            title="Exportar para Excel/CSV">
+            ↓ CSV
+          </a>
+          <button onClick={load} className="btn-ghost">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>

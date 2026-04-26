@@ -502,6 +502,16 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
 
     console.log(`📡 emit lead_moved: conv=${id} ${fromColumn || '?'} → ${column} (lead: ${leadData ? 'completo' : 'parcial'})`)
     io.emit('lead_moved', { id, column, fromColumn, lead: leadData })
+
+    // Registra na timeline
+    db.logAction(id, {
+      agentName: req.agent?.name || 'Agente',
+      action: 'move',
+      fromCol: fromColumn || null,
+      toCol: column,
+      detail: `${fromColumn || '?'} → ${column}`,
+    }).catch(() => {})
+
     res.json({ id, column })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -538,6 +548,12 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
     io.emit('lead_moved', { id, column: 'agendado', fromColumn: leadData?.column, lead: leadData })
     io.emit('schedule_created', { id, scheduledAt, observacao, lead: leadData })
     console.log(`[Schedule] conv=${id} agendado para ${scheduledAt}`)
+    db.logAction(id, {
+      agentName: req.agent?.name || 'Agente',
+      action: 'schedule',
+      toCol: 'agendado',
+      detail: `Agendado para ${new Date(scheduledAt).toLocaleString('pt-BR')}${observacao ? ' — ' + observacao : ''}`,
+    }).catch(() => {})
     res.json({ id, column: 'agendado', scheduledAt, observacao })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -563,6 +579,10 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
     if (payLead) payLead = { ...payLead, column: 'aguardando_pagamento', paymentDueDate, observacao }
 
     io.emit('lead_moved', { id, column: 'aguardando_pagamento', fromColumn: payLead?.column, lead: payLead })
+    if (db.DB_READY()) {
+      const agentName = req.agent?.name || 'Agente'
+      db.logAction(id, { agentName, action: 'payment_set', detail: paymentDueDate })
+    }
     res.json({ id, column: 'aguardando_pagamento', paymentDueDate, observacao })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -725,7 +745,7 @@ app.use('/api/auth/login', loginLimiter)
 app.use('/api', (req, res, next) => {
   if (!JWT_ENABLED) return next()
   const publicPaths = [
-    '/status', '/auth/login', '/debug', '/debug-realtime', '/debug-emit',
+    '/status', '/auth/login', '/debug', '/debug-realtime', '/debug-emit', '/export/',
     '/chatwoot/webhook', '/push/vapid-key',
     '/agents',  // necessário antes do login para mostrar lista de agentes
   ]
@@ -849,6 +869,114 @@ app.post('/api/conversations/:id/labels', async (req, res) => {
     if (cached && cached[id]) cached[id].labels = freeLabels
     io.emit('labels_updated', { id, labels: freeLabels })
     res.json({ ok: true, labels: freeLabels })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── TIMELINE ────────────────────────────────────────────────────────────────
+app.get('/api/timeline/:leadId', async (req, res) => {
+  try {
+    const entries = await db.getTimeline(req.params.leadId)
+    res.json(entries)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── CANCELAR AGENDAMENTO ────────────────────────────────────────────────────
+app.delete('/api/kanban/:id/schedule', async (req, res) => {
+  try {
+    const { id } = req.params
+    const cached = store.getCache()
+    const fromCol = cached?.[String(id)]?.column || 'agendado'
+
+    store.setMeta(id, { scheduledAt: null, observacao: '' })
+    store.setColumn(id, 'leads')
+    store.invalidateCache()
+
+    if (db.DB_READY()) {
+      db.updateMeta(id, { scheduledAt: null, observacao: '', column: 'leads' }).catch(() => {})
+    }
+    if (CHATWOOT_READY) {
+      cw.setKanbanLabel(id, 'leads').catch(() => {})
+    }
+
+    // Lead atualizado para o evento
+    let leadData = cached?.[String(id)] ? { ...cached[String(id)], column: 'leads', scheduledAt: null } : null
+
+    io.emit('lead_moved', { id, column: 'leads', fromColumn: 'agendado', lead: leadData })
+    io.emit('schedule_cancelled', { id })
+
+    db.logAction(id, {
+      agentName: req.agent?.name || 'Agente',
+      action: 'cancel_schedule',
+      fromCol: 'agendado',
+      toCol: 'leads',
+      detail: 'Agendamento cancelado',
+    }).catch(() => {})
+
+    res.json({ ok: true, id, column: 'leads' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── EXPORTAR CSV ─────────────────────────────────────────────────────────────
+app.get('/api/export/kanban', async (req, res) => {
+  try {
+    const { column, agentId, role } = req.query
+    let leads = []
+
+    if (db.DB_READY()) {
+      if (column) {
+        const r = await db.getByColumn(column, { limit: 500, assignedTo: role === 'vendedor' && agentId ? agentId : null })
+        leads = r?.items || []
+      } else {
+        leads = await db.getAll() || []
+      }
+    } else {
+      const all = await getAllConversations()
+      leads = column ? all.filter(l => l.column === column) : all
+    }
+
+    const cols = ['ID','Nome','Telefone','Coluna','Produto','Vendedor','Última Mensagem','Atualizado','Valor Contrato']
+    const rows = leads.map(l => [
+      l.id, l.name || '', l.phone || '',
+      l.column || '', l.product || '', l.assigneeName || '',
+      (l.lastMessage || '').split('\n').join(' ').split(',').join(';'),
+      l.lastMessageAt ? new Date(l.lastMessageAt).toLocaleString('pt-BR') : '',
+      l.contractValue || '',
+    ])
+
+    const csv = [cols, ...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="kanban-${column || 'completo'}-${new Date().toISOString().split('T')[0]}.csv"`)
+    res.send('﻿' + csv)  // BOM para Excel reconhecer UTF-8
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/export/pagamentos', async (req, res) => {
+  try {
+    let leads = []
+    if (db.DB_READY()) {
+      const r = await db.getByColumn('aguardando_pagamento', { limit: 500 })
+      leads = r?.items || []
+    }
+
+    const cols = ['ID','Nome','Telefone','Vendedor','Produto','Vencimento','Valor Contrato','Observação']
+    const rows = leads.map(l => [
+      l.id, l.name || '', l.phone || '', l.assigneeName || '',
+      l.product || '',
+      l.paymentDueDate ? new Date(l.paymentDueDate).toLocaleDateString('pt-BR') : '',
+      l.contractValue || '',
+      (l.observacao || '').split('\n').join(' ').split(',').join(';'),
+    ])
+
+    const csv = [cols, ...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="pagamentos-${new Date().toISOString().split('T')[0]}.csv"`)
+    res.send('﻿' + csv)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1575,6 +1703,14 @@ app.get('/api/debug-emit', (req, res) => {
   res.json({ ok: true, clients: io.engine?.clientsCount || 0, payload: testPayload })
 })
 
+// ─── TIMELINE DE AÇÕES ───────────────────────────────────────────────────────
+app.get('/api/conversations/:id/actions', async (req, res) => {
+  try {
+    const actions = await db.getActions(req.params.id)
+    res.json({ actions })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── WEBHOOK TEST — verifica se o URL está correto ──────────────────────────
 app.get('/api/chatwoot/webhook', (req, res) => {
   res.json({
@@ -1606,16 +1742,6 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     const conversationId = String(data.conversation?.id || data.conversation_id)
     const now = new Date().toISOString()
     const content = data.content || (data.attachments?.length ? '[Arquivo]' : '')
-    // Detecta tipo e direção da última mensagem para exibir no card do kanban
-    const lastMsgType = (() => {
-      if (!data.attachments?.length) return 'text'
-      const att = data.attachments[0]
-      const ft = att.file_type || att.content_type || ''
-      if (ft.includes('audio')) return 'audio'
-      if (ft.includes('image')) return 'image'
-      return 'document'
-    })()
-    const lastMsgIsOutbound = (data.message_type !== 0 && data.message_type !== '0')
     // Filtra mensagens privadas (notas internas do Chatwoot)
     if (data.private === true || data.message_type === 2) return res.json({ ok: true })
 
@@ -1648,8 +1774,6 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
       content,
       isInbound,
       senderName,
-      lastMsgType,
-      lastMsgIsOutbound,
     })
     console.log(`[WH] socket new_message +${Date.now()-t0}ms conv=${conversationId} type=${isInbound?'IN':'OUT'} "${content.slice(0,30)}"`)
 
@@ -1667,7 +1791,7 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     if (db.DB_READY()) {
       setImmediate(async () => {
         try {
-          db.updateLastMessage(conversationId, content, now, lastMsgType, lastMsgIsOutbound).catch(() => {})
+          db.updateLastMessage(conversationId, content, now).catch(() => {})
           if (isInbound) {
             const result = await db.incrementUnread(conversationId).catch(() => null)
             if (result?.updated_at && result.updated_at !== now) {

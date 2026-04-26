@@ -3,6 +3,7 @@ import React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../../contexts/AppContext'
 import { api } from '../../lib/api'
+import { getAccountLabels } from '../../lib/labelsCache'
 import { useSocket } from '../../lib/socket'
 import {
   Send, Loader2, MessageCircle, Smile, Wifi, WifiOff, Tag, ChevronDown,
@@ -583,19 +584,15 @@ function LabelsPanel({ conversationId, initialLabels, currentColumn, onColumMigr
   useEffect(() => { setLabels(initialLabels || []) }, [JSON.stringify(initialLabels)])
 
   useEffect(() => {
-    api.getAccountLabels().then(setAllLabels).catch(() => {})
+    // Cache stale-while-revalidate: retorna em 0ms se já carregou antes
+    getAccountLabels(api.getAccountLabels).then(setAllLabels)
   }, [])
 
   useEffect(() => {
     if (!showAdd) return
     const fn = e => { if (ref.current && !ref.current.contains(e.target)) setShowAdd(false) }
-    // touchstart cobre mobile; mousedown cobre desktop
     document.addEventListener('mousedown', fn)
-    document.addEventListener('touchstart', fn, { passive: true })
-    return () => {
-      document.removeEventListener('mousedown', fn)
-      document.removeEventListener('touchstart', fn)
-    }
+    return () => document.removeEventListener('mousedown', fn)
   }, [showAdd])
 
   // Apenas labels não-kanban para exibir
@@ -625,12 +622,15 @@ function LabelsPanel({ conversationId, initialLabels, currentColumn, onColumMigr
 
   const addLabel = async (label) => {
     const title = label.title || label
-    if (isKanbanLabel(title)) return // segurança extra
+    if (isKanbanLabel(title)) return
     const updated = [...new Set([...labels, title])]
     setLabels(updated)
     setShowAdd(false)
     setSearch('')
     await api.setConversationLabels(conversationId, updated).catch(console.error)
+    // Se label é nova na conta, invalida cache para incluir na próxima abertura
+    const inCache = (window.__tcrmLabelsCache || []).some(l => (l.title || l) === title)
+    if (!inCache) { window.__tcrmLabelsCache = null }
   }
 
   const removeLabel = async (label) => {
@@ -1163,6 +1163,104 @@ function TemplateManager({ templates, setTemplates, onClose }) {
 }
 
 // ─── NotesPanel ──────────────────────────────────────────────────────────────
+// ── Timeline de ações ────────────────────────────────────────────────────────
+const COL_LABELS = {
+  leads:'Leads', negociacao:'Negociação', aguardando_cotacao:'Ag. Cotação',
+  agendado:'Agendado', lancar_venda:'Lançar Venda', aguardando_pagamento:'Ag. Pgto',
+  pago:'Pago', sem_retorno:'Sem Retorno',
+}
+const ACTION_META = {
+  moved:       { label: 'Moveu para',   icon: '↔', color: '#3b82f6' },
+  scheduled:   { label: 'Agendou para', icon: '📅', color: '#06b6d4' },
+  payment_set: { label: 'Definiu pgto', icon: '💰', color: '#f97316' },
+  resolved:    { label: 'Finalizou',    icon: '✅', color: '#22c55e' },
+}
+
+function TimelinePanel({ conversationId }) {
+  const [actions, setActions] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    api.getLeadActions(conversationId)
+      .then(r => setActions(r.actions || []))
+      .catch(() => setActions([]))
+      .finally(() => setLoading(false))
+  }, [conversationId])
+
+  // Escuta novos eventos para adicionar em tempo real
+  useEffect(() => {
+    const handler = (e) => {
+      const { leadId, fromCol, toCol } = e.detail || {}
+      if (String(leadId) !== String(conversationId)) return
+      setActions(prev => [{
+        action: 'moved',
+        from_col: fromCol,
+        to_col: toCol,
+        agent_name: 'Você',
+        created_at: new Date().toISOString(),
+      }, ...prev])
+    }
+    window.addEventListener('tcrm:lead-moved', handler)
+    return () => window.removeEventListener('tcrm:lead-moved', handler)
+  }, [conversationId])
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-5 h-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+    </div>
+  )
+
+  if (!actions.length) return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
+      <History size={32} style={{ opacity: 0.3 }} />
+      <p className="text-sm">Nenhuma ação registrada</p>
+      <p className="text-xs opacity-60">Ações futuras aparecerão aqui</p>
+    </div>
+  )
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      {actions.map((a, i) => {
+        const meta = ACTION_META[a.action] || { label: a.action, icon: '•', color: '#6b7280' }
+        const dt = a.created_at ? new Date(a.created_at) : null
+        const dtStr = dt ? dt.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''
+        return (
+          <div key={i} className="flex items-start gap-3 py-2 border-b border-[var(--border)] last:border-0">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm"
+              style={{ backgroundColor: meta.color + '20' }}>
+              {meta.icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[var(--text-primary)]">
+                  {a.agent_name || 'Sistema'}
+                </p>
+                <span className="text-xs text-[var(--text-muted)] flex-shrink-0">{dtStr}</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                {meta.label}
+                {a.action === 'moved' && (
+                  <>
+                    {a.from_col && <span> de <strong style={{ color: 'var(--text-secondary)' }}>{COL_LABELS[a.from_col] || a.from_col}</strong>}
+                    {a.to_col   && <span> para <strong style={{ color: meta.color }}>{COL_LABELS[a.to_col] || a.to_col}</strong></span>}
+                  </>
+                )}
+                {a.action === 'scheduled' && a.detail && (
+                  <strong style={{ color: '#06b6d4' }}> {new Date(a.detail).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</strong>
+                )}
+                {a.action === 'payment_set' && a.detail && (
+                  <strong style={{ color: '#f97316' }}> {new Date(a.detail).toLocaleDateString('pt-BR')}</strong>
+                )}
+              </p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function NotesPanel({ conversationId, notes, setNotes }) {
   const [noteInput, setNoteInput] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1251,6 +1349,104 @@ const QUICK_EMOJIS = [
   '😅','😉','😎','🤔','😮','😢','😡','🥰','😇','🤩',
   '📞','📱','💬','📋','💰','🏠','🚗','📅','⏰','✉',
 ]
+
+function TimelinePanel({ conversationId }) {
+  const [entries, setEntries] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    if (!conversationId) return
+    setLoading(true)
+    api.getTimeline(conversationId).then(data => {
+      setEntries(Array.isArray(data) ? data : [])
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [conversationId])
+
+  const ACTION_LABELS = {
+    move: 'Moveu',
+    schedule: 'Agendou',
+    cancel_schedule: 'Cancelou agendamento',
+    payment: 'Definiu pagamento',
+    resolved: 'Finalizou',
+    note: 'Adicionou nota',
+  }
+
+  const ACTION_COLORS = {
+    move: '#3b82f6',
+    schedule: '#8b5cf6',
+    cancel_schedule: '#f87171',
+    payment: '#f59e0b',
+    resolved: '#22c55e',
+    note: '#06b6d4',
+  }
+
+  if (loading) return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      {[1,2,3].map(i => (
+        <div key={i} className="animate-pulse flex gap-3 items-start">
+          <div className="w-7 h-7 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--bg-hover)' }} />
+          <div className="flex-1 space-y-1.5 pt-1">
+            <div className="h-3 rounded" style={{ backgroundColor: 'var(--bg-hover)', width: '60%' }} />
+            <div className="h-2.5 rounded" style={{ backgroundColor: 'var(--bg-hover)', width: '40%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if (!entries.length) return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8">
+      <p className="text-2xl">📋</p>
+      <p className="text-sm text-[var(--text-muted)]">Nenhuma ação registrada ainda</p>
+      <p className="text-xs text-[var(--text-muted)] opacity-60">As ações aparecem aqui ao mover, agendar ou finalizar</p>
+    </div>
+  )
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      <div className="relative">
+        {/* Linha vertical */}
+        <div className="absolute left-3 top-3 bottom-3 w-0.5" style={{ backgroundColor: 'var(--border)' }} />
+
+        <div className="space-y-4">
+          {entries.map((entry, i) => {
+            const color = ACTION_COLORS[entry.action] || '#6b7280'
+            return (
+              <div key={i} className="relative flex gap-3 items-start">
+                {/* Dot */}
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 z-10 text-white text-xs font-bold"
+                  style={{ backgroundColor: color }}>
+                  {(entry.agent_name || 'S').slice(0,1).toUpperCase()}
+                </div>
+
+                <div className="flex-1 pb-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[var(--text-primary)]">
+                      {entry.agent_name || 'Sistema'}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded-md font-medium"
+                      style={{ backgroundColor: color + '18', color }}>
+                      {ACTION_LABELS[entry.action] || entry.action}
+                    </span>
+                  </div>
+                  {entry.detail && (
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{entry.detail}</p>
+                  )}
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
+                    {new Date(entry.created_at).toLocaleString('pt-BR', {
+                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ChatPanel() {
   const { selectedLead, setSelectedLead, setScheduleModal, setPaymentModal, applyPendingMove, unreadCounts, setUnreadCounts, unreadUpdatedAt } = useApp()
@@ -1597,8 +1793,9 @@ export default function ChatPanel() {
       {/* ── Tabs: Chat / Notas ── */}
       <div className="flex items-center px-4 border-b border-[var(--border)] flex-shrink-0 gap-0">
         {[
-          { id: 'chat', label: 'Chat', Icon: MessageCircle },
-          { id: 'notas', label: `Notas${notes.length > 0 ? ` (${notes.length})` : ''}`, Icon: StickyNote },
+          { id: 'chat',      label: 'Chat',    Icon: MessageCircle },
+          { id: 'notas',     label: `Notas${notes.length > 0 ? ` (${notes.length})` : ''}`, Icon: StickyNote },
+          { id: 'historico', label: 'Histórico', Icon: History },
         ].map(({ id, label, Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all"
@@ -1666,7 +1863,16 @@ export default function ChatPanel() {
         onMove={handleMove}
       />
 
+      {/* ── Aba: Histórico/Timeline ── */}
+      {activeTab === 'timeline' && (
+        <TimelinePanel conversationId={selectedLead?.id} />
+      )}
+
       {/* ── Aba: Notas ── */}
+      {activeTab === 'historico' && (
+        <TimelinePanel conversationId={selectedLead.id} />
+      )}
+
       {activeTab === 'notas' && (
         <NotesPanel
           conversationId={selectedLead.id}

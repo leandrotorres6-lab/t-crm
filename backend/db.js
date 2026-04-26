@@ -41,8 +41,6 @@ function toRow(lead) {
     avatar: lead.avatar || '',
     kanban_column: lead.column || 'leads',
     last_message: lead.lastMessage || '',
-    last_msg_type: lead.lastMsgType || 'text',
-    last_msg_is_outbound: lead.lastMsgIsOutbound || false,
     last_message_at: lead.lastMessageAt || lead.createdAt || null,
     created_at: lead.createdAt || null,
     unread_count: lead.unreadCount || 0,
@@ -70,8 +68,6 @@ function fromRow(row) {
     avatar: row.avatar,
     column: row.kanban_column,
     lastMessage: row.last_message,
-    lastMsgType: row.last_msg_type || 'text',
-    lastMsgIsOutbound: row.last_msg_is_outbound || false,
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at || row.created_at,  // timestamp de referência para conflitos
@@ -347,6 +343,32 @@ async function markScheduleNotified(id) {
   // dedup via Set no cron — não precisa de coluna no banco
 }
 
+// ── Timeline de ações por lead ────────────────────────────────────────────────
+async function logAction(leadId, { agentName, action, fromCol, toCol, detail = '' } = {}) {
+  if (!DB_READY) return
+  await supabase.from('lead_timeline').insert({
+    lead_id:    String(leadId),
+    agent_name: agentName || 'Sistema',
+    action,
+    from_col:   fromCol || null,
+    to_col:     toCol   || null,
+    detail:     detail  || '',
+    created_at: new Date().toISOString(),
+  }).catch(() => {})  // silencioso — não quebra nada se tabela não existir ainda
+}
+
+async function getTimeline(leadId) {
+  if (!DB_READY) return []
+  const { data, error } = await supabase
+    .from('lead_timeline')
+    .select('*')
+    .eq('lead_id', String(leadId))
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error) return []
+  return data || []
+}
+
 // Dashboard: agrega dados direto do Supabase por período (mais preciso que cache)
 async function getDashboardStats({ start, end } = {}) {
   if (!DB_READY) return null
@@ -374,4 +396,34 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
-module.exports = { init, DB_READY: () => DB_READY, _supabase: () => supabase, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified, getDashboardStats }
+// ── Timeline de ações por lead ───────────────────────────────────────────────
+async function logAction(leadId, { agentName, action, fromCol, toCol, detail } = {}) {
+  if (!DB_READY) return
+  supabase.from('lead_actions').insert({
+    lead_id:    String(leadId),
+    agent_name: agentName || 'Sistema',
+    action:     action    || 'moved',
+    from_col:   fromCol   || null,
+    to_col:     toCol     || null,
+    detail:     detail    || null,
+    created_at: new Date().toISOString(),
+  }).then(({ error }) => {
+    if (error && !error.message.includes('does not exist')) {
+      console.warn('[DB] logAction error:', error.message)
+    }
+  })
+}
+
+async function getActions(leadId) {
+  if (!DB_READY) return []
+  const { data, error } = await supabase
+    .from('lead_actions')
+    .select('*')
+    .eq('lead_id', String(leadId))
+    .order('created_at', { ascending: false })
+    .limit(30)
+  if (error) return []
+  return data || []
+}
+
+module.exports = { init, DB_READY: () => DB_READY, _supabase: () => supabase, logAction, getTimeline, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified, getDashboardStats }

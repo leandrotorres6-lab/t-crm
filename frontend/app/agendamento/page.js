@@ -2,23 +2,106 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import MainLayout from '../../components/layout/MainLayout'
-import { api } from '../../lib/api'
 import { useApp } from '../../contexts/AppContext'
-import { Calendar, Clock, MessageCircle, Bell, ChevronRight, Loader2 } from 'lucide-react'
+import { Calendar, Clock, MessageCircle, Bell, ChevronRight, Loader2, Edit2, Download } from 'lucide-react'
+import { exportCSV } from '../../lib/exportCSV'
+import { useApp } from '../../contexts/AppContext'
 import { useRouter } from 'next/navigation'
+import { api } from '../../lib/api'
 
-function AgendamentoCard({ lead, onAlert }) {
+function EditScheduleModal({ lead, onSave, onClose }) {
+  const [date, setDate] = useState(lead.scheduledAt ? new Date(lead.scheduledAt).toISOString().split('T')[0] : '')
+  const [time, setTime] = useState(lead.scheduledAt ? new Date(lead.scheduledAt).toTimeString().slice(0,5) : '')
+  const [obs, setObs] = useState(lead.observacao || '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!date || !time) return
+    setSaving(true)
+    try {
+      const scheduledAt = new Date(`${date}T${time}:00`).toISOString()
+      await api.scheduleLead(lead.id, scheduledAt, obs)
+      onSave({ ...lead, scheduledAt, observacao: obs })
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-sm rounded-2xl shadow-2xl animate-slide-up"
+        style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+          <div>
+            <h3 className="font-semibold text-[var(--text-primary)]">Editar Agendamento</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-0.5">{lead.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-[var(--bg-hover)]">
+            <X size={16} className="text-[var(--text-muted)]" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-1.5 block">Data</label>
+            <input type="date" value={date} min={new Date().toISOString().split('T')[0]}
+              onChange={e => setDate(e.target.value)} className="input-theme" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-1.5 block">Horário</label>
+            <input type="time" value={time} onChange={e => setTime(e.target.value)} className="input-theme" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-1.5 block">Observação</label>
+            <textarea value={obs} onChange={e => setObs(e.target.value)}
+              rows={2} className="input-theme resize-none" />
+          </div>
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors">
+            Cancelar
+          </button>
+          <button onClick={save} disabled={!date || !time || saving}
+            className="flex-1 btn-primary justify-center py-2.5 rounded-xl disabled:opacity-40">
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AgendamentoCard({ lead, onCancelSchedule, onEditSchedule }) {
   const { setSelectedLead } = useApp()
   const router = useRouter()
+  const [showEdit, setShowEdit] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const scheduled = lead.scheduledAt ? new Date(lead.scheduledAt) : null
   const now = new Date()
   const isPast = scheduled && scheduled < now
   const isToday = scheduled && scheduled.toDateString() === now.toDateString()
   const isSoon = scheduled && (scheduled - now) < 3600000 && !isPast
 
+  const { setScheduleModal } = useApp()
+
   const openChat = () => {
     setSelectedLead(lead)
     router.push('/crm')
+  }
+
+  const openEdit = (e) => {
+    e.stopPropagation()
+    setScheduleModal({ lead })
+  }
+
+  const handleCancel = async () => {
+    if (!confirm(`Cancelar agendamento de ${lead.name}?`)) return
+    setCancelling(true)
+    try {
+      await api.cancelSchedule(lead.id)
+      onCancelSchedule?.(lead.id)
+    } catch (e) { console.error(e) }
+    finally { setCancelling(false) }
   }
 
   return (
@@ -71,16 +154,33 @@ function AgendamentoCard({ lead, onAlert }) {
             </div>
           )}
         </div>
-        <button
-          onClick={openChat}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all flex-shrink-0"
-          style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}
-        >
-          <MessageCircle size={13} />
-          Abrir
-          <ChevronRight size={12} />
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button onClick={() => setShowEdit(true)}
+            className="p-2 rounded-xl hover:bg-[var(--bg-hover)] transition-colors"
+            title="Editar agendamento">
+            <Edit3 size={14} className="text-[var(--text-muted)]" />
+          </button>
+          <button onClick={handleCancel} disabled={cancelling}
+            className="p-2 rounded-xl hover:bg-[var(--bg-hover)] transition-colors"
+            title="Cancelar agendamento">
+            <Trash2 size={14} style={{ color: cancelling ? 'var(--text-muted)' : '#f87171' }} />
+          </button>
+          <button onClick={openChat}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all"
+            style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
+            <MessageCircle size={13} />
+            Abrir
+            <ChevronRight size={12} />
+          </button>
+        </div>
       </div>
+      {showEdit && (
+        <EditScheduleModal
+          lead={lead}
+          onSave={updated => { onEditSchedule?.(updated); setShowEdit(false) }}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
     </div>
   )
 }

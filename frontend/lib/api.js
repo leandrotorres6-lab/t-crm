@@ -54,6 +54,10 @@ export const api = {
   setScheduledAt: (id, scheduledAt, observacao) => fetchJSON(`/kanban/${id}/schedule`, { method: 'PATCH', body: JSON.stringify({ scheduledAt, observacao }) }),
   finalizeLead: (id) => fetchJSON(`/kanban/${id}/finalize`, { method: 'POST' }),
   scheduleLead: (id, scheduledAt, observacao) => fetchJSON(`/kanban/${id}/schedule`, { method: 'PATCH', body: JSON.stringify({ scheduledAt, observacao }) }),
+  cancelSchedule: (id) => fetchJSON(`/kanban/${id}/schedule`, { method: 'DELETE' }),
+  getTimeline: (leadId) => fetchJSON(`/timeline/${leadId}`),
+  exportKanban: (column) => `${API_URL}/export/kanban${column ? '?column=' + column : ''}`,
+  exportPagamentos: () => `${API_URL}/export/pagamentos`,
 
   getMessages: (leadId, before) => fetchJSON(`/messages/${leadId}${before ? `?before=${before}` : ''}`),
   sendMessage: (leadId, content) => fetchJSON(`/messages/${leadId}`, { method: 'POST', body: JSON.stringify({ content }) }),
@@ -100,6 +104,9 @@ export const api = {
   getTemplates: () => fetchJSON('/templates'),
   createTemplate: (title, content) => fetchJSON('/templates', { method: 'POST', body: JSON.stringify({ title, content }) }),
   deleteTemplate: (id) => fetchJSON(`/templates/${id}`, { method: 'DELETE' }),
+
+  // Timeline de ações
+  getLeadActions: (id) => fetchJSON(`/conversations/${id}/actions`),
 
   // Typing
   sendTyping: (id, isTyping) => fetchJSON(`/conversations/${id}/typing`, { method: 'POST', body: JSON.stringify({ isTyping }) }),
