@@ -49,24 +49,23 @@ function MediaBadge({ type }) {
   return null
 }
 
-// ── Seta de direção clara ─────────────────────────────────────────────────────
-// isOutbound = true  → agente enviou → ✓ duplo azul (estilo WhatsApp enviado)
-// isOutbound = false → cliente enviou → seta laranja entrando
+// ── Seta de direção ──────────────────────────────────────────────────────────
+// isOutbound = true  → agente enviou → ✓ azul (enviado)
+// isOutbound = false → cliente enviou → ← verde (recebido)
 function DirectionArrow({ isOutbound }) {
   if (isOutbound) {
-    // Checkmarks azuis = agente enviou (como ✓✓ do WhatsApp)
     return (
-      <svg width="14" height="9" viewBox="0 0 14 9" fill="none">
-        <path d="M1 4.5L4 7.5L9 1" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M5 4.5L8 7.5L13 1" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.6"/>
+      // ✓ azul = eu enviei
+      <svg width="13" height="9" viewBox="0 0 13 9" fill="none">
+        <path d="M1 4L4 7L9 1" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M4.5 4L7.5 7L12 1" stroke="#93c5fd" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     )
   }
-  // Seta laranja = cliente enviou (inbound)
   return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fb923c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 12 9 6 9 18"/>
-      <line x1="9" y1="12" x2="21" y2="12"/>
+    // ← verde = cliente enviou
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <path d="M9 1L2 5.5L9 10" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
@@ -82,7 +81,12 @@ function KanbanCard({ lead, columnId }) {
   const isPending = !!pendingMoves?.[lead.id]
   const msgType   = lead.lastMsgType || 'text'
   // Se tem mensagem e o tipo não está definido, assume inbound (cliente)
-  const isOut     = lead.lastMsgIsOutbound === true
+  // Se tem não-lidas, última msg é definitivamente do cliente (inbound)
+  // Se lastMsgIsOutbound está definido explicitamente, usa o valor
+  const hasDefinedDir = lead.lastMsgIsOutbound !== undefined && lead.lastMsgIsOutbound !== null
+  const isOut = hasDefinedDir ? lead.lastMsgIsOutbound === true : false
+  // Só mostra seta se tiver direção definida ou tiver unread (certeza que é inbound)
+  const showArrow = hasDefinedDir || unread > 0
 
   return (
     <div
@@ -148,7 +152,7 @@ function KanbanCard({ lead, columnId }) {
       {/* Última mensagem: seta + ícone ou texto */}
       {(lead.lastMessage || msgType !== 'text') && (
         <div className="flex items-center gap-1.5" style={{ minHeight: 14 }}>
-          {lead.lastMessage && <DirectionArrow isOutbound={isOut} />}
+          {lead.lastMessage && showArrow && <DirectionArrow isOutbound={isOut} />}
           {msgType !== 'text'
             ? <span style={{ fontSize: '11px' }}><MediaBadge type={msgType} /></span>
             : <p className="text-xs text-[var(--text-muted)] truncate flex-1" style={{ fontSize: '12px' }}>

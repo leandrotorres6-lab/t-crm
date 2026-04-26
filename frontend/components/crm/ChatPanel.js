@@ -33,29 +33,23 @@ function formatDuration(sec) { const m = Math.floor(sec / 60); return `${m}:${St
 function formatSize(bytes) { if (bytes > 1024*1024) return `${(bytes/(1024*1024)).toFixed(1)}MB`; return `${Math.round(bytes/1024)}KB` }
 
 // ─── Componente: player de áudio customizado ─────────────────────────────────
+const SPEEDS = [1, 1.5, 2]
+
 function AudioPlayer({ url, isAgent }) {
-  const [playing, setPlaying] = useState(false)
-  const [current, setCurrent] = useState(0)
+  const [playing,  setPlaying]  = useState(false)
+  const [current,  setCurrent]  = useState(0)
   const [duration, setDuration] = useState(0)
+  const [speed,    setSpeed]    = useState(1)
   const audioRef = useRef(null)
 
-  // Força carregamento dos metadados (duração) assim que url estiver disponível
   useEffect(() => {
     if (!url || !audioRef.current) return
     const audio = audioRef.current
     audio.load()
-
-    const tryDuration = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration)
-      }
-    }
-
+    const tryDuration = () => { if (audio.duration && isFinite(audio.duration)) setDuration(audio.duration) }
     audio.addEventListener('loadedmetadata', tryDuration)
     audio.addEventListener('durationchange', tryDuration)
-    // Fallback: tenta após pequeno delay
     const t = setTimeout(tryDuration, 300)
-
     return () => {
       audio.removeEventListener('loadedmetadata', tryDuration)
       audio.removeEventListener('durationchange', tryDuration)
@@ -63,35 +57,48 @@ function AudioPlayer({ url, isAgent }) {
     }
   }, [url])
 
+  // Aplica velocidade ao audio element
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed
+  }, [speed])
+
   const toggle = () => {
     if (!audioRef.current) return
     if (playing) { audioRef.current.pause(); setPlaying(false) }
     else { audioRef.current.play().then(() => setPlaying(true)).catch(console.error) }
   }
 
-  const bg = isAgent ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)'
-  const fg = isAgent ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)'
+  const nextSpeed = () => {
+    const idx = SPEEDS.indexOf(speed)
+    setSpeed(SPEEDS[(idx + 1) % SPEEDS.length])
+  }
+
+  const bg     = isAgent ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)'
+  const fg     = isAgent ? 'rgba(255,255,255,0.8)'  : 'var(--text-muted)'
   const accent = isAgent ? 'white' : '#3b82f6'
   const progress = duration > 0 ? (current / duration) * 100 : 0
 
   return (
-    <div className="flex items-center gap-2 min-w-[180px]">
+    <div className="flex items-center gap-2 min-w-[190px]">
       <audio ref={audioRef} src={url} preload="metadata"
         onTimeUpdate={e => setCurrent(e.target.currentTime)}
         onLoadedMetadata={e => { if (isFinite(e.target.duration)) setDuration(e.target.duration) }}
         onEnded={() => { setPlaying(false); setCurrent(0) }} />
+
+      {/* Play/Pause */}
       <button onClick={toggle}
         className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110"
         style={{ backgroundColor: accent, color: isAgent ? '#1d4ed8' : 'white' }}>
         {playing ? <Pause size={14} /> : <Play size={14} />}
       </button>
+
+      {/* Barra de progresso */}
       <div className="flex-1">
-        <div className="h-1 rounded-full cursor-pointer" style={{ backgroundColor: bg }}
+        <div className="h-1.5 rounded-full cursor-pointer" style={{ backgroundColor: bg }}
           onClick={e => {
             if (!audioRef.current || !duration) return
             const rect = e.currentTarget.getBoundingClientRect()
-            const pct = (e.clientX - rect.left) / rect.width
-            audioRef.current.currentTime = pct * duration
+            audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration
           }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: accent }} />
         </div>
@@ -99,26 +106,101 @@ function AudioPlayer({ url, isAgent }) {
           {formatDuration(playing ? current : duration)}
         </p>
       </div>
-      <Volume2 size={12} style={{ color: fg, flexShrink: 0 }} />
+
+      {/* Botão de velocidade — toca 1x → 1.5x → 2x */}
+      <button onClick={nextSpeed}
+        className="flex-shrink-0 px-1.5 py-0.5 rounded-md text-xs font-bold transition-all hover:opacity-80 active:scale-95"
+        style={{
+          backgroundColor: speed !== 1 ? accent + '30' : bg,
+          color: speed !== 1 ? accent : fg,
+          fontSize: '11px', minWidth: '32px', textAlign: 'center',
+          border: `1px solid ${speed !== 1 ? accent + '50' : 'transparent'}`,
+        }}
+        title="Velocidade de reprodução">
+        {speed}x
+      </button>
     </div>
   )
 }
 
 // ─── Componente: imagem recebida ──────────────────────────────────────────────
+function MediaLightbox({ url, type = 'image', onClose }) {
+  // Fecha com ESC
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
+      onClick={onClose}>
+      {/* X para fechar */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-white/20"
+        style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'white' }}>
+        <X size={20} />
+      </button>
+
+      {/* Conteúdo — stopPropagation para não fechar ao clicar na mídia */}
+      <div onClick={e => e.stopPropagation()} className="max-w-[95vw] max-h-[90vh] flex items-center justify-center">
+        {type === 'image' && (
+          <img src={url}
+            className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl"
+            style={{ userSelect: 'none' }} />
+        )}
+        {type === 'video' && (
+          <video controls autoPlay
+            className="max-w-full max-h-[90vh] rounded-xl shadow-2xl"
+            style={{ maxWidth: '90vw' }}>
+            <source src={url} />
+          </video>
+        )}
+      </div>
+
+      {/* Dica de fechar */}
+      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/40">
+        Clique fora ou pressione ESC para fechar
+      </p>
+    </div>
+  )
+}
+
+function VideoAttachment({ att }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <div onClick={() => setOpen(true)}
+        className="relative rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+        style={{ width: 220, height: 140, backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <video className="w-full h-full object-cover" style={{ pointerEvents: 'none' }}>
+          <source src={att.url} />
+        </video>
+        {/* Botão play centralizado */}
+        <div className="absolute inset-0 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255,255,255,0.9)' }}>
+            <Play size={20} style={{ color: '#1e293b', marginLeft: 2 }} />
+          </div>
+        </div>
+      </div>
+      {open && <MediaLightbox url={att.url} type="video" onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
 function ImageAttachment({ att }) {
   const [open, setOpen] = useState(false)
   if (!att.url) return null
   return (
     <>
       <img src={att.url} alt="imagem" onClick={() => setOpen(true)}
-        className="rounded-xl max-w-[220px] max-h-[200px] object-cover cursor-zoom-in"
+        className="rounded-xl max-w-[220px] max-h-[200px] object-cover cursor-zoom-in transition-opacity hover:opacity-90"
         style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(0,0,0,0.9)' }} onClick={() => setOpen(false)}>
-          <img src={att.url} className="max-w-full max-h-full rounded-xl object-contain" />
-        </div>
-      )}
+      {open && <MediaLightbox url={att.url} type="image" onClose={() => setOpen(false)} />}
     </>
   )
 }
@@ -243,9 +325,7 @@ function MessageBubble({ msg }) {
             {att.fileType === 'image' && <ImageAttachment att={att} />}
             {att.fileType === 'audio' && <div className="px-2 py-1"><AudioPlayer url={att.url} isAgent={isAgent} /></div>}
             {att.fileType === 'video' && att.url && (
-              <video controls className="rounded-xl max-w-[220px]" style={{ maxHeight: '180px' }}>
-                <source src={att.url} />
-              </video>
+              <VideoAttachment att={att} />
             )}
             {att.fileType === 'file' && <DocumentAttachment att={att} isAgent={isAgent} />}
           </div>
