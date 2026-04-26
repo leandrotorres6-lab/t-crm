@@ -20,6 +20,7 @@ let pollTimer  = null
 let isPolling  = false
 let warmDone   = false
 let deps       = null
+let pollCycleCount = 0
 
 // ─── Dedup ────────────────────────────────────────────────────────────────────
 function alreadySeen(msgId) {
