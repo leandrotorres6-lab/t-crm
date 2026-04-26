@@ -41,6 +41,8 @@ function toRow(lead) {
     avatar: lead.avatar || '',
     kanban_column: lead.column || 'leads',
     last_message: lead.lastMessage || '',
+    last_msg_type: lead.lastMsgType || 'text',
+    last_msg_is_outbound: lead.lastMsgIsOutbound || false,
     last_message_at: lead.lastMessageAt || lead.createdAt || null,
     created_at: lead.createdAt || null,
     unread_count: lead.unreadCount || 0,
@@ -68,6 +70,8 @@ function fromRow(row) {
     avatar: row.avatar,
     column: row.kanban_column,
     lastMessage: row.last_message,
+    lastMsgType: row.last_msg_type || 'text',
+    lastMsgIsOutbound: row.last_msg_is_outbound || false,
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at || row.created_at,  // timestamp de referência para conflitos

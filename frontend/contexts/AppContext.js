@@ -52,24 +52,12 @@ export function AppProvider({ children }) {
   // Movimento otimista
   const applyPendingMove = useCallback((lead, toCol) => {
     setPendingMoves(prev => ({ ...prev, [lead.id]: { fromCol: lead.column, toCol, lead: { ...lead, column: toCol } } }))
-    // Invalida cache das duas colunas
+    // Invalida cache das duas colunas para forçar reload limpo depois
     try {
       const { kanbanCache } = require('../lib/kanbanCache')
       kanbanCache.invalidate(lead.column)
       kanbanCache.invalidate(toCol)
     } catch {}
-    // Dispara tcrm:lead-moved IMEDIATAMENTE com lead completo
-    // A coluna destino insere o card sem esperar o socket voltar
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
-        detail: {
-          leadId: String(lead.id),
-          fromCol: lead.column,
-          toCol,
-          leadData: { ...lead, column: toCol },
-        }
-      }))
-    }
   }, [])
 
   const clearPendingMove = useCallback((leadId) => {
@@ -191,11 +179,10 @@ export function AppProvider({ children }) {
     console.log('[Socket] new_message RECEBIDO:', { conversationId, isInbound, content: (content||'').slice(0,30) })
     
     // Deduplicação por message_id — evita duplo processamento em reconexão
-    // Dedup: usa message.id se disponível, senão content+convId+ts (mais único que só ts)
-    const msgId = message?.id
-      || `${conversationId}:${(content||'').slice(0,20)}:${lastMessageAt}`
+    const msgId = message?.id || `${conversationId}-${lastMessageAt}`
     if (processedMessages.current.has(msgId)) {
-      return  // silencioso — duplicata normal em reconexão
+      console.log(`[Socket] DUPLICADO ignorado msgId=${msgId}`)
+      return
     }
     processedMessages.current.add(msgId)
     // Mantém só os últimos 200 para evitar memory leak
@@ -206,6 +193,9 @@ export function AppProvider({ children }) {
     const id = String(conversationId)
     const ts = lastMessageAt || new Date().toISOString()
     const text = content || message?.content || ''
+    // Extrai tipo e direção para atualizar o card do kanban em tempo real
+    const msgType = payload.lastMsgType || 'text'
+    const msgIsOut = payload.lastMsgIsOutbound || false
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {

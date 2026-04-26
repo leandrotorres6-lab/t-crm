@@ -277,6 +277,18 @@ function mapConversation(conv, columnOverride) {
     assigneeName: assignee.name || '',
     assigneeAvatar: assignee.name ? assignee.name.slice(0, 2).toUpperCase() : null,
     lastMessage: lastMsg?.content || (lastMsg?.attachments?.length ? '[Arquivo]' : ''),
+    lastMsgType: (() => {
+      if (!lastMsg) return 'text'
+      if (lastMsg.attachments?.length) {
+        const att = lastMsg.attachments[0]
+        const ft = att.file_type || att.content_type || ''
+        if (ft.includes('audio') || att.data_url?.includes('.ogg') || att.data_url?.includes('.mp3') || att.data_url?.includes('.wav')) return 'audio'
+        if (ft.includes('image') || att.data_url?.match(/\.(jpg|jpeg|png|gif|webp)/i)) return 'image'
+        return 'document'
+      }
+      return 'text'
+    })(),
+    lastMsgIsOutbound: lastMsg ? (lastMsg.message_type !== 0) : false,
     // Usa last_activity_at do Chatwoot como fonte primária (mais confiável)
     // É atualizado a cada msg enviada/recebida
     lastMessageAt: conv.last_activity_at

@@ -114,20 +114,23 @@ async function poll() {
     }
     if (!convs.length) { isPolling = false; return }
 
-    // Também busca 1 página SEM filtro de status — pega conversas resolvidas com mensagem nova
-    try {
-      const allStatus = await deps.cw.getConversations({
-        page: 1,
-        inboxId: deps.targetInboxId || undefined,
-      })
-      if (allStatus?.length) {
-        for (const conv of allStatus) {
-          if (conv.status !== 'resolved') continue  // já coberto acima
-          const exists = convs.some(c => c.id === conv.id)
-          if (!exists) convs.push(conv)  // adiciona resolvidas com atividade recente
+    // Busca conversas resolvidas com mensagem nova — só a cada 10 ciclos (30s)
+    // Evita 3 chamadas por ciclo no free tier do Railway
+    if (pollCycleCount % 10 === 0) {
+      try {
+        const allStatus = await deps.cw.getConversations({
+          page: 1,
+          inboxId: deps.targetInboxId || undefined,
+        })
+        if (allStatus?.length) {
+          for (const conv of allStatus) {
+            if (conv.status !== 'resolved') continue
+            const exists = convs.some(c => c.id === conv.id)
+            if (!exists) convs.push(conv)
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     // Verifica se alguma conversa tem mensagem nova
     let newCount = 0
