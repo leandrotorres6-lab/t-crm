@@ -34,9 +34,23 @@ export function getSocket() {
     socket.on('connect_error', (e) => console.warn('[Socket] Erro:', e.message))
     socket.on('reconnect', (n) => {
       console.log(`[Socket] Reconectado após ${n} tentativa(s)`)
-      // Passa since para o backend fazer replay de leads atualizados
       socket.emit('sync_request', { since: socket._lastEventAt })
     })
+
+    // Mobile: reconecta quando usuário volta ao app após ficar em background
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          if (!socket.connected) {
+            console.log('[Socket] App voltou ao foco — reconectando...')
+            socket.connect()
+          } else {
+            // Mesmo conectado, pede sync para cobrir mensagens perdidas em background
+            socket.emit('sync_request', { since: socket._lastEventAt })
+          }
+        }
+      })
+    }
 
     // Atualiza lastEventAt em qualquer evento relevante
     const trackEvent = () => { socket._lastEventAt = Date.now() }

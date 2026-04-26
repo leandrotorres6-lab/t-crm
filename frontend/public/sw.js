@@ -1,7 +1,7 @@
 // Service Worker — T-CRM Push Notifications
 // Versão: 2.0 — badge + agrupamento + background sync
 
-const CACHE_NAME = 't-crm-sw-v4'
+const CACHE_NAME = 't-crm-sw-v5'
 
 // ── Push recebido (app fechado ou em background) ──────────────────────────────
 self.addEventListener('push', event => {
@@ -13,10 +13,8 @@ self.addEventListener('push', event => {
 
   const { title = 'T-CRM', body = 'Nova mensagem', data = {}, tag, renotify } = payload
 
-  // Atualiza badge do ícone do app (Android + iOS 16.4+ PWA)
-  if (self.navigator?.setAppBadge) {
-    self.navigator.setAppBadge().catch(() => {})
-  }
+  // Atualiza badge do ícone — incrementa +1 (será corrigido quando app abrir)
+  try { navigator.setAppBadge(1) } catch {}
 
   const options = {
     body,
@@ -80,15 +78,14 @@ self.addEventListener('message', event => {
   const { type, count } = event.data || {}
 
   if (type === 'SET_BADGE') {
-    if (count > 0) {
-      self.navigator?.setAppBadge?.(count).catch(() => {})
-    } else {
-      self.navigator?.clearAppBadge?.().catch(() => {})
-    }
+    try {
+      if (count > 0) navigator.setAppBadge(count)
+      else navigator.clearAppBadge()
+    } catch {}
   }
 
   if (type === 'CLEAR_BADGE') {
-    self.navigator?.clearAppBadge?.().catch(() => {})
+    try { navigator.clearAppBadge() } catch {}
   }
 
   if (type === 'SKIP_WAITING') {

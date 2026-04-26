@@ -429,12 +429,16 @@ export default function KanbanBoard() {
         </div>
       </div>
 
-      {/* ── Mobile: colunas com swipe horizontal ── */}
+      {/* ── Mobile: colunas com swipe horizontal — só monta as próximas da ativa ── */}
       <div className="md:hidden flex-1 overflow-hidden relative w-full"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
         <div className="absolute inset-0">
-          {ALL_COLUMNS.map((col, i) => (
+          {ALL_COLUMNS.map((col, i) => {
+            // Só monta ativa + 1 de cada lado = máximo 3 colunas no DOM
+            const shouldMount = Math.abs(i - mobileCol) <= 1
+            if (!shouldMount) return null
+            return (
             <div key={col}
               className="absolute inset-0 transition-all duration-300 ease-in-out"
               style={{

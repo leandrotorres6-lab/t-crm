@@ -100,18 +100,24 @@ export function AppProvider({ children }) {
     console.log(`[Socket] sync_state: ${Object.keys(snapshot).length} conversas com unread`)
   })
 
-  // Sincroniza badge do ícone do app com total de não lidas
+  // Sincroniza badge com total de não lidas — direto + via SW
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    if (typeof window === 'undefined') return
     const total = Object.values(unreadCounts || {}).reduce((s, v) => s + (v || 0), 0)
-    navigator.serviceWorker.ready.then(reg => {
-      reg.active?.postMessage({ type: total > 0 ? 'SET_BADGE' : 'CLEAR_BADGE', count: total })
-    }).catch(() => {})
-    // API direta (Chrome desktop + Android PWA)
-    if (total > 0) {
-      navigator.setAppBadge?.(total).catch(() => {})
-    } else {
-      navigator.clearAppBadge?.().catch(() => {})
+
+    // API direta — Chrome desktop e Android PWA instalado
+    try {
+      if (total > 0) navigator.setAppBadge?.(total)
+      else           navigator.clearAppBadge?.()
+    } catch {}
+
+    // Via SW — iOS PWA instalado (iOS 16.4+) e como fallback
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration('/').then(reg => {
+        if (reg?.active) {
+          reg.active.postMessage({ type: total > 0 ? 'SET_BADGE' : 'CLEAR_BADGE', count: total })
+        }
+      }).catch(() => {})
     }
   }, [unreadCounts])
 
@@ -193,9 +199,6 @@ export function AppProvider({ children }) {
     const id = String(conversationId)
     const ts = lastMessageAt || new Date().toISOString()
     const text = content || message?.content || ''
-    // Extrai tipo e direção para atualizar o card do kanban em tempo real
-    const msgType = payload.lastMsgType || 'text'
-    const msgIsOut = payload.lastMsgIsOutbound || false
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {
@@ -218,10 +221,13 @@ export function AppProvider({ children }) {
         }))
       }
 
-      showNotification(`💬 ${senderName}`, text.slice(0, 100), {
-        tag: `msg-${id}`,
-        renotify: true,
-      })
+      // Notificação nativa só quando o app está em foreground (background = push handle)
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        showNotification(`💬 ${senderName}`, text.slice(0, 100), {
+          tag: `msg-${id}`,
+          renotify: true,
+        })
+      }
     }
 
     // Evento global para colunas e listas
