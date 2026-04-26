@@ -115,6 +115,21 @@ async function poll() {
     }
     if (!convs.length) { isPolling = false; return }
 
+    // Também busca 1 página SEM filtro de status — pega conversas resolvidas com mensagem nova
+    try {
+      const allStatus = await deps.cw.getConversations({
+        page: 1,
+        inboxId: deps.targetInboxId || undefined,
+      })
+      if (allStatus?.length) {
+        for (const conv of allStatus) {
+          if (conv.status !== 'resolved') continue  // já coberto acima
+          const exists = convs.some(c => c.id === conv.id)
+          if (!exists) convs.push(conv)  // adiciona resolvidas com atividade recente
+        }
+      }
+    } catch {}
+
     // Verifica se alguma conversa tem mensagem nova
     let newCount = 0
     for (const conv of convs) {

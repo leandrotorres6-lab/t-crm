@@ -1539,6 +1539,18 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     const mt = data.message_type
     const isInbound = mt === 0 || mt === '0' || mt === 'incoming' || mt === 'inbound'
 
+    // Se conversa está resolvida e cliente mandou mensagem → reabre automaticamente
+    const convStatus = data.conversation?.status || data.status || ''
+    if (isInbound && convStatus === 'resolved') {
+      console.log(`[WH] 🔄 Conversa resolvida ${conversationId} recebeu msg inbound — reabrindo`)
+      store.setColumn(conversationId, 'leads')
+      if (db.DB_READY()) db.updateMeta(conversationId, { status: 'open', column: 'leads' }).catch(() => {})
+      if (CHATWOOT_READY) cw.reopenConversation(conversationId).catch(() => {})
+      // Emite como nova conversa para aparecer no kanban
+      const mapped = cw.mapConversation(data.conversation || data, 'leads')
+      io.emit('new_conversation', { ...mapped, unreadCount: 1 })
+    }
+
     // ── 1. Cache local — síncrono, zero latência ──────────────────────────────
     store.updateLastMessage(conversationId, content)
     store.updateLastMessageAt(conversationId, content, now)
