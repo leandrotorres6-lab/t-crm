@@ -994,6 +994,14 @@ app.get('/api/export/pagamentos', async (req, res) => {
 })
 
 // ─── MENSAGENS ───────────────────────────────────────────────────────────────
+// Cache de mensagens — evita bater no Chatwoot a cada abertura de conversa
+const _msgCache = new Map()  // leadId → { messages, hasMore, ts }
+const MSG_CACHE_TTL = 30000  // 30s
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of _msgCache) { if (now - v.ts > MSG_CACHE_TTL) _msgCache.delete(k) }
+}, 60000)
+
 app.get('/api/messages/:leadId', async (req, res) => {
   try {
     const { leadId } = req.params
@@ -1003,11 +1011,22 @@ app.get('/api/messages/:leadId', async (req, res) => {
       const lead = leads.find(l => l.id === leadId)
       return res.json({ messages: lead ? generateMessages(leadId, lead.name) : [], hasMore: false })
     }
+
+    // Cache hit — retorna em <5ms (sem ir ao Chatwoot)
+    const cacheKey = `${leadId}:${before || 'latest'}`
+    const cached = _msgCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < MSG_CACHE_TTL) {
+      return res.json({ messages: cached.messages, hasMore: cached.hasMore })
+    }
+
     const raw = await cw.getMessages(leadId, before)
     const messages = raw.filter(m => m.message_type <= 1).map(cw.mapMessage)
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-    // Chatwoot retorna 20 mensagens por página — se veio 20, há mais para carregar
     const hasMore = raw.length >= 20
+
+    // Salva no cache
+    _msgCache.set(cacheKey, { messages, hasMore, ts: Date.now() })
+
     res.json({ messages, hasMore })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1791,6 +1810,9 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
       io.emit('new_conversation', { ...mapped, unreadCount: 1 })
     }
 
+    // Invalida cache de mensagens para esta conversa — próxima abertura traz dados frescos
+    _msgCache.delete(`${conversationId}:latest`)
+
     // ── 1. Cache local — síncrono, zero latência ──────────────────────────────
     store.updateLastMessage(conversationId, content)
     store.updateLastMessageAt(conversationId, content, now)
@@ -1824,7 +1846,7 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     if (db.DB_READY()) {
       setImmediate(async () => {
         try {
-          db.updateLastMessage(conversationId, content, now).catch(() => {})
+          db.updateLastMessage(conversationId, content, now, lastMsgType, !isInbound).catch(() => {})
           if (isInbound) {
             const result = await db.incrementUnread(conversationId).catch(() => null)
             if (result?.updated_at && result.updated_at !== now) {

@@ -75,6 +75,11 @@ function processMessage(convId, msg, senderFallback) {
     content,
     isInbound,
     senderName,
+    lastMsgType: msg.attachments?.length
+      ? (msg.attachments[0].file_type || '').includes('audio') ? 'audio'
+        : (msg.attachments[0].file_type || '').includes('image') ? 'image' : 'document'
+      : 'text',
+    lastMsgIsOutbound: !isInbound,
   })
 
   // unread_update só para inbound — independente do Chatwoot/bot

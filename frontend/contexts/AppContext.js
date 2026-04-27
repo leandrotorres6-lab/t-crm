@@ -199,6 +199,7 @@ export function AppProvider({ children }) {
     const id = String(conversationId)
     const ts = lastMessageAt || new Date().toISOString()
     const text = content || message?.content || ''
+    const msgType = payload.lastMsgType || 'text'
 
     // Incrementa não lidas apenas para inbound
     if (isInbound !== false) {
@@ -233,7 +234,7 @@ export function AppProvider({ children }) {
     // Evento global para colunas e listas
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:new-message', {
-        detail: { conversationId: id, content: text, lastMessageAt: ts, isInbound }
+        detail: { conversationId: id, content: text, lastMessageAt: ts, isInbound, lastMsgType: msgType, lastMsgIsOutbound: !isInbound }
       }))
     }
   })
