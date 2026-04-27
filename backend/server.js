@@ -1588,10 +1588,15 @@ function notifyInbound(msgId, conversationId, senderName, content) {
   if (notifiedMsgIds.has(key)) return
   notifiedMsgIds.add(key)
   console.log(`[Push] 📩 Nova msg inbound id=${msgId} conv=${conversationId}`)
+  // Corpo descritivo para mídia (aparece na tela de bloqueio)
+  let pushBody = content || 'Nova mensagem'
+  if (!content || content === '[Arquivo]') {
+    pushBody = '📎 Enviou um arquivo'
+  }
   sendPushToAssigned(
     conversationId,
     `💬 ${senderName || 'Cliente'}`,
-    (content || 'Nova mensagem').slice(0, 120),
+    pushBody.slice(0, 120),
     { conversationId, url: '/conversas' }
   ).catch(e => console.warn('[Push] Erro:', e.message))
 }

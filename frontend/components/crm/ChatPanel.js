@@ -1670,8 +1670,26 @@ export default function ChatPanel() {
     api.getNotes(selectedLead.id).then(d => setNotes(d.notes || [])).catch(() => {})
     // Carrega templates (uma vez)
     if (templates.length === 0) api.getTemplates().then(d => setTemplates(d.templates || [])).catch(() => {})
+    // Cache local: mostra mensagens instantaneamente se já abriu essa conversa antes
+    const cacheKey = `tcrm_msgs_${selectedLead.id}`
+    try {
+      const cached = sessionStorage.getItem(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        setMessages(parsed.messages || [])
+        setHasMore(parsed.hasMore ?? true)
+        setLoadingInit(false)  // mostra imediatamente do cache
+      }
+    } catch {}
+
+    // Busca do servidor em paralelo (atualiza se houver mensagens novas)
     api.getMessages(selectedLead.id)
-      .then(data => { setMessages(data.messages); setHasMore(data.hasMore) })
+      .then(data => {
+        setMessages(data.messages)
+        setHasMore(data.hasMore)
+        // Salva no cache para próxima abertura
+        try { sessionStorage.setItem(cacheKey, JSON.stringify({ messages: data.messages.slice(-30), hasMore: data.hasMore })) } catch {}
+      })
       .catch(console.error)
       .finally(() => setLoadingInit(false))
   }, [selectedLead?.id])
@@ -1761,7 +1779,15 @@ export default function ChatPanel() {
     if (!input.trim() || !selectedLead || sending) return
     const content = input.trim(); setInput(''); setSending(true)
     const opt = { id: `opt-${Date.now()}`, sender: 'agent', content, timestamp: new Date().toISOString(), attachments: [] }
-    setMessages(prev => [...prev, opt])
+    setMessages(prev => {
+      const updated = [...prev, opt]
+      // Atualiza cache com mensagem nova
+      try {
+        const cacheKey = `tcrm_msgs_${selectedLead.id}`
+        sessionStorage.setItem(cacheKey, JSON.stringify({ messages: updated.slice(-30), hasMore: true }))
+      } catch {}
+      return updated
+    })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
     // Lead permanece na coluna atual — só move manualmente pelo kanban
@@ -1825,7 +1851,15 @@ export default function ChatPanel() {
       id: `opt-${Date.now()}`, sender: 'agent', content: '', timestamp: new Date().toISOString(),
       attachments: [{ id: 'opt', fileType: 'audio', url: previewUrl, filename, fileSize: blob.size }]
     }
-    setMessages(prev => [...prev, opt])
+    setMessages(prev => {
+      const updated = [...prev, opt]
+      // Atualiza cache com mensagem nova
+      try {
+        const cacheKey = `tcrm_msgs_${selectedLead.id}`
+        sessionStorage.setItem(cacheKey, JSON.stringify({ messages: updated.slice(-30), hasMore: true }))
+      } catch {}
+      return updated
+    })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     try {
       const fd = new FormData()

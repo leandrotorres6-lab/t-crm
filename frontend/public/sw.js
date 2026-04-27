@@ -1,7 +1,7 @@
 // Service Worker T-CRM — v6
 // badge numérico + notificação confiável + visibilitychange
 
-const CACHE_NAME = 't-crm-sw-v6'
+const CACHE_NAME = 't-crm-sw-v7'
 let _badgeCount = 0  // contador local de não lidas
 
 // ── Push recebido (app fechado ou background) ─────────────────────────────────
@@ -32,19 +32,17 @@ self.addEventListener('push', event => {
   try { navigator.setAppBadge(_badgeCount) } catch {}
 
   const options = {
-    body,
-    icon:              '/icon-192.png',
-    badge:             '/icon-192.png',
-    data:              { ...data, url: data.url || '/conversas' },
-    vibrate:           [150, 80, 150],
-    requireInteraction: false,
-    tag:               tag || `conv-${data.conversationId || 'default'}`,
-    renotify:          renotify !== false,
-    silent:            false,
-    actions: [
-      { action: 'open',    title: '💬 Abrir' },
-      { action: 'dismiss', title: 'Dispensar' },
-    ],
+    body:               body || 'Nova mensagem recebida',
+    icon:               '/icon-192.png',
+    badge:              '/icon-192.png',
+    image:              data.imageUrl || undefined,   // preview de imagem se for anexo
+    data:               { ...data, url: data.url || '/conversas' },
+    vibrate:            [200, 100, 200],
+    requireInteraction: true,   // mantém visível na tela de bloqueio até o usuário interagir
+    tag:                tag || `conv-${data.conversationId || 'default'}`,
+    renotify:           renotify !== false,
+    silent:             false,
+    // Não usa actions — alguns Android escondem o body quando tem actions na lock screen
   }
 
   event.waitUntil(
