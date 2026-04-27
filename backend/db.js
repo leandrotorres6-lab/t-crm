@@ -227,7 +227,7 @@ async function resetUnread(id) {
 
 // ── Busca textual ─────────────────────────────────────────────────────────────
 // Busca SEM filtro de status — inclui leads resolvidos/finalizados (para busca global)
-async function searchAll({ q, assignedTo } = {}) {
+async function searchAll({ q, assignedTo, limit = 20 } = {}) {
   if (!DB_READY) return []
   const qPhone = (q || '').replace(/[^0-9]/g, '')
   let query = supabase.from('leads').select('*').limit(20)
@@ -343,6 +343,40 @@ async function markScheduleNotified(id) {
   // dedup via Set no cron — não precisa de coluna no banco
 }
 
+// ── Normalização de telefone ─────────────────────────────────────────────────
+// Garante que +5511999999999 e 5511999999999 e 11999999999 sejam tratados igual
+function normalizePhone(phone) {
+  if (!phone) return ''
+  // Remove tudo exceto dígitos
+  let digits = phone.replace(/[^\d]/g, '')
+  // Brasil: se começa com 55 e tem 12-13 dígitos, está correto
+  // Se tem 10-11 dígitos (sem código país), adiciona 55
+  if (digits.length >= 10 && digits.length <= 11) digits = '55' + digits
+  // Remove 0 de discagem inicial se houver
+  if (digits.startsWith('0')) digits = digits.slice(1)
+  return digits  // Ex: 5521999999999
+}
+
+// Busca conversa ativa de um contato pelo telefone normalizado
+// Usado para evitar criar card duplicado quando o mesmo cliente abre nova conversa
+async function findActiveConvByPhone(phone) {
+  if (!DB_READY || !phone) return null
+  const norm = normalizePhone(phone)
+  if (!norm || norm.length < 8) return null
+
+  // Busca no Supabase por telefone normalizado — retorna a mais recente ativa
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*')
+    .or(`phone.ilike.%${norm}%,phone.ilike.%${phone}%`)
+    .in('status', ['open'])
+    .order('last_message_at', { ascending: false, nullsLast: true })
+    .limit(1)
+
+  if (error || !data?.length) return null
+  return fromRow(data[0])
+}
+
 // ── Timeline de ações por lead ────────────────────────────────────────────────
 async function logAction(leadId, { agentName, action, fromCol, toCol, detail = '' } = {}) {
   if (!DB_READY) return
@@ -396,6 +430,40 @@ async function loadPushSubscriptions() {
   }).filter(Boolean)
 }
 
+// ── Normalização de telefone ─────────────────────────────────────────────────
+// Garante que +5511999999999 e 5511999999999 e 11999999999 sejam tratados igual
+function normalizePhone(phone) {
+  if (!phone) return ''
+  // Remove tudo exceto dígitos
+  let digits = phone.replace(/[^\d]/g, '')
+  // Brasil: se começa com 55 e tem 12-13 dígitos, está correto
+  // Se tem 10-11 dígitos (sem código país), adiciona 55
+  if (digits.length >= 10 && digits.length <= 11) digits = '55' + digits
+  // Remove 0 de discagem inicial se houver
+  if (digits.startsWith('0')) digits = digits.slice(1)
+  return digits  // Ex: 5521999999999
+}
+
+// Busca conversa ativa de um contato pelo telefone normalizado
+// Usado para evitar criar card duplicado quando o mesmo cliente abre nova conversa
+async function findActiveConvByPhone(phone) {
+  if (!DB_READY || !phone) return null
+  const norm = normalizePhone(phone)
+  if (!norm || norm.length < 8) return null
+
+  // Busca no Supabase por telefone normalizado — retorna a mais recente ativa
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*')
+    .or(`phone.ilike.%${norm}%,phone.ilike.%${phone}%`)
+    .in('status', ['open'])
+    .order('last_message_at', { ascending: false, nullsLast: true })
+    .limit(1)
+
+  if (error || !data?.length) return null
+  return fromRow(data[0])
+}
+
 // ── Timeline de ações por lead ───────────────────────────────────────────────
 async function logAction(leadId, { agentName, action, fromCol, toCol, detail } = {}) {
   if (!DB_READY) return
@@ -426,4 +494,4 @@ async function getActions(leadId) {
   return data || []
 }
 
-module.exports = { init, DB_READY: () => DB_READY, _supabase: () => supabase, logAction, getTimeline, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified, getDashboardStats }
+module.exports = { init, DB_READY: () => DB_READY, _supabase: () => supabase, normalizePhone, findActiveConvByPhone, logAction, getTimeline, upsertLead, upsertMany, upsertManyNoUnread, getByColumn, getColumnCounts, moveColumn, updateLastMessage, incrementUnread, resetUnread, search, searchAll, getAll, getLeadById, fromRow, toRow, savePushSubscription, loadPushSubscriptions, deletePushSubscription, updateMeta, getScheduledDue, markScheduleNotified, getDashboardStats }

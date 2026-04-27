@@ -1832,23 +1832,66 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
 
   if (event === 'conversation_created') {
     const conversationId = String(data.id)
-    // Filtra inbox se configurado
     if (targetInboxId && data.inbox_id !== targetInboxId) return res.json({ ok: true })
-    // Dedup: ignora se já emitimos new_conversation para este conversation_id nos últimos 30s
     if (recentNewConversations.has(conversationId)) {
       console.log(`[Webhook] conversation_created DEDUP conv=${conversationId} — ignorado`)
       return res.json({ ok: true })
     }
     recentNewConversations.set(conversationId, Date.now())
+
+    const newMapped = cw.mapConversation(data, 'leads')
+    const phone     = newMapped.phone
+
+    // ── REGRA ANTI-DUPLICATA ─────────────────────────────────────────────────
+    // Antes de criar novo card, verifica se já existe lead com mesmo telefone.
+    // Isso acontece quando o Chatwoot cria nova conversa para cliente existente
+    // (ex: conversa resolvida + cliente manda nova mensagem = novo conv.id no Chatwoot)
+    let existingLead = null
+    if (db.DB_READY() && phone) {
+      existingLead = await db.findActiveConvByPhone(phone).catch(() => null)
+    }
+
+    if (existingLead && existingLead.id !== conversationId) {
+      // Contato JÁ EXISTE com telefone diferente conv id
+      // Estratégia: atualiza o lead existente com o novo conversationId do Chatwoot
+      // e move a conversa antiga para o mesmo slot → sem duplicata
+      console.log(`[Webhook] ⚠️ Telefone ${phone} já existe (lead ${existingLead.id}) — nova conv ${conversationId} será mesclada`)
+
+      // Remove lead antigo do store e registra o novo ID como alias
+      store.setColumn(conversationId, existingLead.column || 'leads')
+
+      // Atualiza Supabase: muda o id da conversa para o novo (mais recente do Chatwoot)
+      // mas preserva a coluna kanban, unread, e outros dados do lead existente
+      if (db.DB_READY()) {
+        await db._supabase()
+          .from('leads')
+          .update({
+            id:                String(conversationId),
+            last_message_at:   new Date().toISOString(),
+            updated_at:        new Date().toISOString(),
+          })
+          .eq('id', String(existingLead.id))
+          .catch(e => console.warn('[Webhook] merge lead error:', e.message))
+      }
+
+      // Emite update da conversa existente (não nova) — kanban não cria card duplicado
+      io.emit('lead_moved', {
+        id:         String(conversationId),
+        column:     existingLead.column || 'leads',
+        fromColumn: existingLead.column || 'leads',
+        lead:       { ...existingLead, id: String(conversationId) },
+      })
+      return res.json({ ok: true })
+    }
+
+    // Não existe → cria normalmente
     store.setColumn(conversationId, 'leads')
     store.invalidateCache()
-    // Persiste no Supabase
     if (db.DB_READY()) {
-      const mapped = cw.mapConversation(data, 'leads')
-      db.upsertLead({ ...mapped, unreadCount: 1 }).catch(() => {})
+      db.upsertLead({ ...newMapped, unreadCount: 1 }).catch(() => {})
     }
-    console.log(`[Webhook] ✅ new_conversation conv=${conversationId}`)
-    io.emit('new_conversation', cw.mapConversation(data, 'leads'))
+    console.log(`[Webhook] ✅ new_conversation conv=${conversationId} phone=${phone}`)
+    io.emit('new_conversation', { ...newMapped, unreadCount: 1 })
   }
 
   // Conversa reaberta (cliente respondeu após ser finalizada)
