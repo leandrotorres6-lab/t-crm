@@ -1703,23 +1703,28 @@ export default function ChatPanel() {
     if (templates.length === 0) api.getTemplates().then(d => setTemplates(d.templates || [])).catch(() => {})
     // Cache local: mostra mensagens instantaneamente se já abriu essa conversa antes
     const cacheKey = `tcrm_msgs_${selectedLead.id}`
+    let hadCache = false
     try {
       const cached = sessionStorage.getItem(cacheKey)
       if (cached) {
         const parsed = JSON.parse(cached)
-        setMessages(parsed.messages || [])
-        setHasMore(parsed.hasMore ?? true)
-        setLoadingInit(false)  // mostra imediatamente do cache
+        if (parsed.messages?.length > 0) {  // só usa cache se tem mensagens
+          setMessages(parsed.messages)
+          setHasMore(parsed.hasMore ?? true)
+          setLoadingInit(false)
+          hadCache = true
+        }
       }
     } catch {}
 
-    // Busca do servidor em paralelo (atualiza se houver mensagens novas)
+    // Busca do servidor — sempre roda para ter dados atualizados
     api.getMessages(selectedLead.id)
       .then(data => {
-        setMessages(data.messages)
-        setHasMore(data.hasMore)
-        // Salva no cache para próxima abertura
-        try { sessionStorage.setItem(cacheKey, JSON.stringify({ messages: data.messages.slice(-30), hasMore: data.hasMore })) } catch {}
+        if (data.messages?.length > 0 || !hadCache) {
+          setMessages(data.messages)
+          setHasMore(data.hasMore)
+          try { sessionStorage.setItem(cacheKey, JSON.stringify({ messages: data.messages.slice(-30), hasMore: data.hasMore })) } catch {}
+        }
       })
       .catch(console.error)
       .finally(() => setLoadingInit(false))

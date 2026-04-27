@@ -491,6 +491,31 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
       metaUpdates.scheduledAt = null
     }
 
+    // Busca lead — se não existir, cria do Chatwoot (lead veio de busca/conversas)
+    let leadData = null
+    const cached = store.getCache()
+    if (cached?.[String(id)]) {
+      leadData = { ...cached[String(id)], column }
+    } else if (db.DB_READY()) {
+      leadData = await db.getLeadById(id).catch(() => null)
+      if (leadData) leadData = { ...leadData, column }
+    }
+
+    // Lead não existe no sistema → busca no Chatwoot e insere agora
+    if (!leadData && CHATWOOT_READY) {
+      try {
+        const conv = await cw.getConversation(id)
+        if (conv) {
+          leadData = { ...cw.mapConversation(conv, column), column }
+          // Persiste no Supabase e store
+          store.setColumn(id, column)
+          await db.upsertLead({ ...leadData, unreadCount: 0 }).catch(() => {})
+          store.setCache({ ...(store.getCache() || {}), [String(id)]: leadData })
+          console.log(`[Move] Lead ${id} criado automaticamente a partir do Chatwoot`)
+        }
+      } catch (e) { console.warn('[Move] Auto-create failed:', e.message) }
+    }
+
     store.invalidateCache()
 
     // Atualiza Supabase e Chatwoot em paralelo (background)
@@ -502,16 +527,6 @@ app.patch('/api/kanban/:id/move', async (req, res) => {
       }) : Promise.resolve(),
       CHATWOOT_READY ? cw.setKanbanLabel(id, column).catch(e => console.warn('Label update failed:', e.message)) : Promise.resolve(),
     ]).catch(() => {})
-
-    // Busca lead completo para enviar no evento (cache primeiro, sem latência extra)
-    let leadData = null
-    const cached = store.getCache()
-    if (cached && cached[String(id)]) {
-      leadData = { ...cached[String(id)], column }
-    } else if (db.DB_READY()) {
-      leadData = await db.getLeadById(id).catch(() => null)
-      if (leadData) leadData = { ...leadData, column }
-    }
 
     console.log(`📡 emit lead_moved: conv=${id} ${fromColumn || '?'} → ${column} (lead: ${leadData ? 'completo' : 'parcial'})`)
     io.emit('lead_moved', { id, column, fromColumn, lead: leadData })
@@ -533,11 +548,31 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
   try {
     const { id } = req.params
     const { scheduledAt, observacao } = req.body
-    // Marca como 'agendado' no store E remove flag __resolved__ se existia
+    // Busca lead — auto-cria se não existir
+    let leadData = null
+    const cached = store.getCache()
+    const schedFromCol = cached?.[String(id)]?.column || null
+    if (cached?.[String(id)]) leadData = { ...cached[String(id)] }
+    else if (db.DB_READY()) leadData = await db.getLeadById(id).catch(() => null)
+
+    // Auto-cria se não encontrou
+    if (!leadData && CHATWOOT_READY) {
+      try {
+        const conv = await cw.getConversation(id)
+        if (conv) {
+          leadData = cw.mapConversation(conv, 'leads')
+          store.setColumn(id, 'leads')
+          await db.upsertLead({ ...leadData, unreadCount: 0 }).catch(() => {})
+          console.log(`[Schedule] Lead ${id} criado automaticamente`)
+        }
+      } catch {}
+    }
+
+    leadData = leadData ? { ...leadData, column: 'agendado', scheduledAt, observacao } : null
+
     store.setColumn(id, 'agendado')
     store.setMeta(id, { scheduledAt, observacao: observacao || '', status: 'open' })
     store.invalidateCache()
-    // Persiste no Supabase — status:'open' reabre lead finalizado
     if (db.DB_READY()) {
       db.updateMeta(id, {
         column:      'agendado',
@@ -546,19 +581,12 @@ app.patch('/api/kanban/:id/schedule', async (req, res) => {
         observacao:  observacao || '',
       }).catch(() => {})
     }
-    // Reabre no Chatwoot (assíncrono, não bloqueia resposta)
     if (CHATWOOT_READY) {
       cw.setKanbanLabel(id, 'agendado').catch(() => {})
       cw.reopenConversation(id).catch(() => {})
     }
-    // Busca lead completo para emitir no evento
-    let leadData = null
-    const cached = store.getCache()
-    if (cached?.[String(id)]) leadData = { ...cached[String(id)], column: 'agendado', scheduledAt, observacao }
-    else if (db.DB_READY()) leadData = await db.getLeadById(id).catch(() => null)
-    if (leadData) leadData = { ...leadData, column: 'agendado', scheduledAt, observacao }
 
-    io.emit('lead_moved', { id, column: 'agendado', fromColumn: leadData?.column, lead: leadData })
+    io.emit('lead_moved', { id, column: 'agendado', fromColumn: schedFromCol, lead: leadData })
     io.emit('schedule_created', { id, scheduledAt, observacao, lead: leadData })
     console.log(`[Schedule] conv=${id} agendado para ${scheduledAt}`)
     db.logAction(id, {
@@ -576,6 +604,14 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
   try {
     const { id } = req.params
     const { paymentDueDate, observacao } = req.body
+    // Busca lead ANTES de invalidar o cache
+    let payLead = null
+    const payCache = store.getCache()
+    const fromCol = payCache?.[String(id)]?.column || null
+    if (payCache?.[String(id)]) payLead = { ...payCache[String(id)] }
+    else if (db.DB_READY()) payLead = await db.getLeadById(id).catch(() => null)
+    payLead = payLead ? { ...payLead, column: 'aguardando_pagamento', paymentDueDate, observacao } : null
+
     store.setColumn(id, 'aguardando_pagamento')
     store.setMeta(id, { paymentDueDate, observacao: observacao || '' })
     store.invalidateCache()
@@ -584,14 +620,8 @@ app.patch('/api/kanban/:id/payment', async (req, res) => {
       db.updateMeta(id, { column: 'aguardando_pagamento', paymentDueDate: paymentDueDate || null, observacao: observacao || '' }).catch(() => {})
     }
     if (CHATWOOT_READY) cw.setKanbanLabel(id, 'aguardando_pagamento').catch(e => console.warn(e.message))
-    // Busca lead completo para emitir no evento
-    let payLead = null
-    const payCache = store.getCache()
-    if (payCache?.[String(id)]) payLead = { ...payCache[String(id)], column: 'aguardando_pagamento', paymentDueDate, observacao }
-    else if (db.DB_READY()) payLead = await db.getLeadById(id).catch(() => null)
-    if (payLead) payLead = { ...payLead, column: 'aguardando_pagamento', paymentDueDate, observacao }
 
-    io.emit('lead_moved', { id, column: 'aguardando_pagamento', fromColumn: payLead?.column, lead: payLead })
+    io.emit('lead_moved', { id, column: 'aguardando_pagamento', fromColumn: fromCol, lead: payLead })
     if (db.DB_READY()) {
       const agentName = req.agent?.name || 'Agente'
       db.logAction(id, { agentName, action: 'payment_set', detail: paymentDueDate })
@@ -814,22 +844,31 @@ app.post('/api/conversations/:id/assign', async (req, res) => {
   try {
     const { id } = req.params
     const { agentId } = req.body
-    // Atualiza Chatwoot
     let agentName = ''
+
+    // Auto-cria lead se não existir (vem de busca/conversas)
+    let leadExists = db.DB_READY() ? await db.getLeadById(id).catch(() => null) : null
+    if (!leadExists && CHATWOOT_READY) {
+      try {
+        const conv = await cw.getConversation(id)
+        if (conv) {
+          const col = store.getColumn(id) || 'leads'
+          const mapped = cw.mapConversation(conv, col)
+          store.setColumn(id, col)
+          await db.upsertLead({ ...mapped, unreadCount: 0 }).catch(() => {})
+          console.log(`[Assign] Lead ${id} criado automaticamente`)
+        }
+      } catch {}
+    }
+
     if (CHATWOOT_READY) {
       const result = await cw.assignAgent(id, agentId)
       agentName = result?.meta?.assignee?.name || ''
     }
-    // Persiste no Supabase
     if (db.DB_READY()) {
-      db.updateMeta(id, {
-        assignedTo: String(agentId),
-        assigneeName: agentName,
-      }).catch(() => {})
+      db.updateMeta(id, { assignedTo: String(agentId), assigneeName: agentName }).catch(() => {})
     }
-    // Atualiza store em memória
     store.invalidateCache()
-    // Notifica frontend
     io.emit('conversation_updated', { id, assignedTo: String(agentId), assigneeName: agentName })
     res.json({ ok: true, agentId, agentName })
   } catch (e) { res.status(500).json({ error: e.message }) }
