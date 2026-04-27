@@ -283,7 +283,7 @@ function AgentAvatar({ name, avatarUrl, size = 24 }) {
   )
 }
 
-function MessageBubble({ msg, contactName }) {
+function MessageBubble({ msg, contactName, onReply }) {
   if (msg.sender === 'activity') return null
   const isAgent = msg.sender === 'agent'
   const time = new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -291,7 +291,11 @@ function MessageBubble({ msg, contactName }) {
   const atts = msg.attachments || []
 
   return (
-    <div className={`flex ${isAgent ? 'justify-end' : 'justify-start'} mb-3 gap-2 animate-fade-in`}>
+    <div className={`flex ${isAgent ? 'justify-end' : 'justify-start'} mb-3 gap-2 animate-fade-in group/msg`}
+      onContextMenu={e => {
+        e.preventDefault()
+        if (onReply) onReply({ id: msg.id, content: msg.content?.slice(0,80) || '[Mídia]', senderName: isAgent ? (msg.authorName || 'Eu') : (contactName || 'Cliente') })
+      }}>
       {/* Avatar do contato */}
       {!isAgent && (() => {
         const n = contactName || msg.senderName || msg.sender || ''
@@ -304,7 +308,41 @@ function MessageBubble({ msg, contactName }) {
         )
       })()}
 
+      {/* Botão responder ao passar mouse */}
+      {!isAgent && onReply && (
+        <button
+          onClick={() => onReply({ id: msg.id, content: msg.content?.slice(0,80) || '[Mídia]', senderName: contactName || 'Cliente' })}
+          className="opacity-0 group-hover/msg:opacity-100 transition-opacity self-center p-1 rounded hover:bg-[var(--bg-hover)]"
+          title="Responder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+        </button>
+      )}
+      {isAgent && onReply && (
+        <button
+          onClick={() => onReply({ id: msg.id, content: msg.content?.slice(0,80) || '[Mídia]', senderName: msg.authorName || 'Eu' })}
+          className="opacity-0 group-hover/msg:opacity-100 transition-opacity self-center p-1 rounded hover:bg-[var(--bg-hover)]"
+          title="Responder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+        </button>
+      )}
       <div className="max-w-[78%]">
+        {/* Mensagem citada (reply) — estilo WhatsApp */}
+        {msg.content && msg.content.startsWith('> _') && (() => {
+          const lines = msg.content.split('\n')
+          const quoteLine = lines[0].replace(/^> _/, '').replace(/_$/, '')
+          const rest = lines.slice(2).join('\n').trim()
+          const colonIdx = quoteLine.indexOf(':')
+          const quoteName = colonIdx > 0 ? quoteLine.slice(0, colonIdx).trim() : ''
+          const quoteText = colonIdx > 0 ? quoteLine.slice(colonIdx + 1).trim() : quoteLine
+          return (
+            <div className="px-2.5 py-1.5 mb-1 rounded-lg border-l-2"
+              style={{ backgroundColor: isAgent ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderLeftColor: '#60a5fa', fontSize: '11px' }}>
+              {quoteName && <p className="font-bold" style={{ color: '#60a5fa', fontSize: '10px' }}>{quoteName}</p>}
+              <p className="text-[var(--text-muted)] truncate" style={{ fontSize: '11px' }}>{quoteText}</p>
+            </div>
+          )
+        })()}
+
         {/* Nome do agente acima da mensagem */}
         {isAgent && msg.authorName && (
           <div className="flex items-center gap-1.5 justify-end mb-1">
@@ -507,27 +545,15 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
   const [showMenu, setShowMenu] = useState(false)
   const [togglingHumano, setTogglingHumano] = useState(false)
   const [search, setSearch] = useState('')
-  const convIdRef = useRef(conversationId)
+  const prevConvId = useRef(conversationId)
 
+  // Reset labels only when switching to a different conversation
   useEffect(() => {
-    // Só reseta labels quando muda de CONVERSA — não quando atualiza unread/socket
-    if (convIdRef.current !== conversationId) {
-      convIdRef.current = conversationId
+    if (prevConvId.current !== conversationId) {
+      prevConvId.current = conversationId
       setLabels(initialLabels || [])
     }
-  }, [conversationId])
-
-  // Sincroniza apenas se uma label foi adicionada/removida externamente (ex: outro agente)
-  // Usa ref para evitar loop infinito
-  const labelsRef = useRef(labels)
-  useEffect(() => {
-    const sorted = [...(initialLabels || [])].sort().join(',')
-    const current = [...labelsRef.current].sort().join(',')
-    if (sorted !== current) {
-      labelsRef.current = initialLabels || []
-      setLabels(initialLabels || [])
-    }
-  }, [(initialLabels || []).sort().join(',')]  )
+  }, [conversationId, initialLabels])
 
   const hasHumano = labels.some(l => l.toLowerCase() === 'humano')
   const hasCancelado = labels.some(l => l.toLowerCase() === 'cancelado')
@@ -1564,6 +1590,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [replyTo, setReplyTo] = useState(null)  // { id, content, senderName }
   const [pendingFiles, setPendingFiles] = useState([])  // múltiplos arquivos
 
   const [isLive, setIsLive] = useState(false)
@@ -1795,7 +1822,12 @@ export default function ChatPanel() {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
     // Lead permanece na coluna atual — só move manualmente pelo kanban
-    try { await api.sendMessage(selectedLead.id, content) }
+    // Se tem reply, inclui referência
+    const replyContent = replyTo
+      ? `> _${replyTo.senderName}: ${replyTo.content}_\n\n${content}`
+      : content
+    setReplyTo(null)  // limpa quote após enviar
+    try { await api.sendMessage(selectedLead.id, replyContent) }
     catch (e) { console.error(e) }
     finally { setSending(false) }
   }
@@ -2039,7 +2071,7 @@ export default function ChatPanel() {
                   </React.Fragment>
                 )
               }
-              return <MessageBubble key={item.msg.id} msg={item.msg} contactName={selectedLead?.name} />
+              return <MessageBubble key={item.msg.id} msg={item.msg} contactName={selectedLead?.name} onReply={setReplyTo} />
             })
         }
         <div ref={messagesEndRef} />
@@ -2292,6 +2324,19 @@ export default function ChatPanel() {
                   </div>
                 )}
               </div>
+              {/* Quote de resposta — estilo WhatsApp */}
+              {replyTo && (
+                <div className="flex items-start gap-2 px-3 py-2 mx-2 mb-1 rounded-lg border-l-4"
+                  style={{ backgroundColor: 'var(--bg-hover)', borderLeftColor: '#3b82f6' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold" style={{ color: '#60a5fa' }}>{replyTo.senderName}</p>
+                    <p className="text-xs text-[var(--text-muted)] truncate">{replyTo.content}</p>
+                  </div>
+                  <button onClick={() => setReplyTo(null)} className="flex-shrink-0 p-0.5 rounded hover:bg-[var(--bg-card)]">
+                    <X size={12} style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </div>
+              )}
               <textarea ref={textareaRef}
                 onPaste={e => {
                   // Detecta imagem/arquivo colado (Ctrl+V)
