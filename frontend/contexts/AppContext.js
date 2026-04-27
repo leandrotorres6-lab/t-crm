@@ -52,12 +52,22 @@ export function AppProvider({ children }) {
   // Movimento otimista
   const applyPendingMove = useCallback((lead, toCol) => {
     setPendingMoves(prev => ({ ...prev, [lead.id]: { fromCol: lead.column, toCol, lead: { ...lead, column: toCol } } }))
-    // Invalida cache das duas colunas para forçar reload limpo depois
     try {
       const { kanbanCache } = require('../lib/kanbanCache')
       kanbanCache.invalidate(lead.column)
       kanbanCache.invalidate(toCol)
     } catch {}
+    // Dispara imediatamente para a coluna destino inserir o card sem esperar socket
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tcrm:lead-moved', {
+        detail: {
+          leadId: String(lead.id),
+          fromCol: lead.column || null,
+          toCol,
+          leadData: { ...lead, column: toCol },
+        }
+      }))
+    }
   }, [])
 
   const clearPendingMove = useCallback((leadId) => {
