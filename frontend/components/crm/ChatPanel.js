@@ -292,13 +292,17 @@ function MessageBubble({ msg, contactName }) {
 
   return (
     <div className={`flex ${isAgent ? 'justify-end' : 'justify-start'} mb-3 gap-2 animate-fade-in`}>
-      {/* Avatar do contato (lado esquerdo) — usa iniciais do nome */}
-      {!isAgent && (
-        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-1"
-          style={{ fontSize: '9px', fontWeight: 'bold', backgroundColor: '#3b82f6', flexShrink: 0 }}>
-          {contactName ? contactName.slice(0,2).toUpperCase() : (msg.senderName ? msg.senderName.slice(0,2).toUpperCase() : '?')}
-        </div>
-      )}
+      {/* Avatar do contato */}
+      {!isAgent && (() => {
+        const n = contactName || msg.senderName || msg.sender || ''
+        const initials = n.length >= 2 ? n.slice(0,2).toUpperCase() : (n.length === 1 ? n.toUpperCase() : '??')
+        return (
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-1"
+            style={{ fontSize: '9px', fontWeight: 700, backgroundColor: '#3b82f6' }}>
+            {initials}
+          </div>
+        )
+      })()}
 
       <div className="max-w-[78%]">
         {/* Nome do agente acima da mensagem */}

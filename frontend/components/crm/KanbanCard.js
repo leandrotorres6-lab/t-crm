@@ -50,22 +50,21 @@ function MediaBadge({ type }) {
 }
 
 // ── Seta de direção ──────────────────────────────────────────────────────────
-// isOutbound = true  → agente enviou → ✓ azul (enviado)
-// isOutbound = false → cliente enviou → ← verde (recebido)
+// isOutbound = true  → EU enviei → seta VERDE para baixo ↓
+// isOutbound = false → CLIENTE enviou → seta AZUL para cima ↑
 function DirectionArrow({ isOutbound }) {
   if (isOutbound) {
+    // ↓ verde = eu enviei (saindo)
     return (
-      // ✓ azul = eu enviei
-      <svg width="13" height="9" viewBox="0 0 13 9" fill="none">
-        <path d="M1 4L4 7L9 1" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M4.5 4L7.5 7L12 1" stroke="#93c5fd" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+        <path d="M5 1L5 9M5 9L1 5.5M5 9L9 5.5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     )
   }
+  // ↑ azul = cliente enviou (entrando)
   return (
-    // ← verde = cliente enviou
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-      <path d="M9 1L2 5.5L9 10" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+      <path d="M5 11L5 3M5 3L1 6.5M5 3L9 6.5" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }

@@ -1930,6 +1930,13 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     io.emit('new_conversation', { ...newMapped, unreadCount: 1 })
   }
 
+  // Conversa atualizada — Chatwoot pode mudar status quando bot responde
+  // NÃO resetar unread aqui — apenas o agente humano no T-CRM faz isso
+  if (event === 'conversation_updated') {
+    // Ignora — não queremos que atualizações do Chatwoot (bot lendo, etc.) afetem o T-CRM
+    return res.json({ ok: true })
+  }
+
   // Conversa reaberta (cliente respondeu após ser finalizada)
   if (event === 'conversation_status_changed' && data.status === 'open') {
     const convId = String(data.id)

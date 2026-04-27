@@ -386,6 +386,8 @@ export function AppProvider({ children }) {
     const ts = new Date().toISOString()
     setUnreadCounts(prev => ({ ...prev, [id]: 0 }))
     if (unreadUpdatedAt?.current) unreadUpdatedAt.current[id] = ts
+    // Marca como lido no backend (Supabase) — só quando agente humano abre no T-CRM
+    api.markRead(id).catch(() => {})
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('tcrm:read', { detail: { conversationId: id } }))
     }

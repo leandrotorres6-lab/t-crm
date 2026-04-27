@@ -108,6 +108,9 @@ export const api = {
   // Timeline de ações
   getLeadActions: (id) => fetchJSON(`/conversations/${id}/actions`),
 
+  // Mark as read
+  markRead: (id) => fetchJSON(`/mark-read/${id}`, { method: 'POST', body: JSON.stringify({ source: 'tcrm' }) }),
+
   // Typing
   sendTyping: (id, isTyping) => fetchJSON(`/conversations/${id}/typing`, { method: 'POST', body: JSON.stringify({ isTyping }) }),
 
