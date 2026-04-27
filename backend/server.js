@@ -1766,6 +1766,13 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
     const conversationId = String(data.conversation?.id || data.conversation_id)
     const now = new Date().toISOString()
     const content = data.content || (data.attachments?.length ? '[Arquivo]' : '')
+    const lastMsgType = (() => {
+      if (!data.attachments?.length) return 'text'
+      const ft = data.attachments[0].file_type || data.attachments[0].content_type || ''
+      if (ft.includes('audio')) return 'audio'
+      if (ft.includes('image')) return 'image'
+      return 'document'
+    })()
     // Filtra mensagens privadas (notas internas do Chatwoot)
     if (data.private === true || data.message_type === 2) return res.json({ ok: true })
 
@@ -1798,6 +1805,8 @@ app.post('/api/chatwoot/webhook', async (req, res) => {
       content,
       isInbound,
       senderName,
+      lastMsgType,
+      lastMsgIsOutbound: !isInbound,
     })
     console.log(`[WH] socket new_message +${Date.now()-t0}ms conv=${conversationId} type=${isInbound?'IN':'OUT'} "${content.slice(0,30)}"`)
 

@@ -1764,15 +1764,7 @@ export default function ChatPanel() {
     setMessages(prev => [...prev, opt])
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
-    // Optimistic: ao responder um lead não atendido → move para negociação
-    const col = currentColumn || selectedLead.column
-    if (col === 'leads') {
-      applyPendingMove(selectedLead, 'negociacao')
-      setCurrentColumn('negociacao')
-      setSelectedLead({ ...selectedLead, column: 'negociacao' })
-      api.moveLead(selectedLead.id, 'negociacao').catch(() => {})
-    }
-
+    // Lead permanece na coluna atual — só move manualmente pelo kanban
     try { await api.sendMessage(selectedLead.id, content) }
     catch (e) { console.error(e) }
     finally { setSending(false) }
@@ -1952,14 +1944,7 @@ export default function ChatPanel() {
         assigneeName={assigneeName}
         onAssigned={agent => {
           setAssigneeName(agent.name)
-          // Optimistic: ao atribuir agente em 'leads', move para 'negociacao'
-          const col = currentColumn || selectedLead?.column
-          if (col === 'leads' && selectedLead) {
-            applyPendingMove(selectedLead, 'negociacao')
-            setCurrentColumn('negociacao')
-            setSelectedLead({ ...selectedLead, column: 'negociacao', assigneeName: agent.name })
-            api.moveLead(selectedLead.id, 'negociacao').catch(() => {})
-          }
+          setSelectedLead({ ...selectedLead, assigneeName: agent.name })
         }}
         onMove={handleMove}
       />
