@@ -283,7 +283,7 @@ function AgentAvatar({ name, avatarUrl, size = 24 }) {
   )
 }
 
-function MessageBubble({ msg }) {
+function MessageBubble({ msg, contactName }) {
   if (msg.sender === 'activity') return null
   const isAgent = msg.sender === 'agent'
   const time = new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -292,10 +292,12 @@ function MessageBubble({ msg }) {
 
   return (
     <div className={`flex ${isAgent ? 'justify-end' : 'justify-start'} mb-3 gap-2 animate-fade-in`}>
-      {/* Avatar do lead (lado esquerdo) */}
+      {/* Avatar do contato (lado esquerdo) — usa iniciais do nome */}
       {!isAgent && (
-        <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-white flex-shrink-0 mt-1"
-          style={{ fontSize: '10px', fontWeight: 'bold' }}>?</div>
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-1"
+          style={{ fontSize: '9px', fontWeight: 'bold', backgroundColor: '#3b82f6', flexShrink: 0 }}>
+          {contactName ? contactName.slice(0,2).toUpperCase() : (msg.senderName ? msg.senderName.slice(0,2).toUpperCase() : '?')}
+        </div>
       )}
 
       <div className="max-w-[78%]">
@@ -501,8 +503,27 @@ function UnifiedBar({ conversationId, initialLabels, currentColumn, product, ass
   const [showMenu, setShowMenu] = useState(false)
   const [togglingHumano, setTogglingHumano] = useState(false)
   const [search, setSearch] = useState('')
+  const convIdRef = useRef(conversationId)
 
-  useEffect(() => { setLabels(initialLabels || []) }, [JSON.stringify(initialLabels)])
+  useEffect(() => {
+    // Só reseta labels quando muda de CONVERSA — não quando atualiza unread/socket
+    if (convIdRef.current !== conversationId) {
+      convIdRef.current = conversationId
+      setLabels(initialLabels || [])
+    }
+  }, [conversationId])
+
+  // Sincroniza apenas se uma label foi adicionada/removida externamente (ex: outro agente)
+  // Usa ref para evitar loop infinito
+  const labelsRef = useRef(labels)
+  useEffect(() => {
+    const sorted = [...(initialLabels || [])].sort().join(',')
+    const current = [...labelsRef.current].sort().join(',')
+    if (sorted !== current) {
+      labelsRef.current = initialLabels || []
+      setLabels(initialLabels || [])
+    }
+  }, [(initialLabels || []).sort().join(',')]  )
 
   const hasHumano = labels.some(l => l.toLowerCase() === 'humano')
   const hasCancelado = labels.some(l => l.toLowerCase() === 'cancelado')
@@ -1995,7 +2016,7 @@ export default function ChatPanel() {
                   </React.Fragment>
                 )
               }
-              return <MessageBubble key={item.msg.id} msg={item.msg} />
+              return <MessageBubble key={item.msg.id} msg={item.msg} contactName={selectedLead?.name} />
             })
         }
         <div ref={messagesEndRef} />
