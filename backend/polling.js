@@ -2,15 +2,33 @@
 // Detecção robusta: último messageId por conversa, sem depender de unread_count
 // Tolerante a bot rápido, múltiplas mensagens e delay de API
 
-const POLL_INTERVAL = 3000   // 3s — fallback quando webhook não dispara
-let webhookActive = false    // true = webhook recebeu msg recentemente → polling reduz frequência
-let webhookTimer  = null
+// Intervalo dinâmico:
+// - Webhook funcionou nos últimos 2min → poll a cada 30s (só verificação de segurança)
+// - Webhook sem atividade → poll a cada 10s (fallback real)
+const POLL_INTERVAL_WEBHOOK_OK  = 30000  // 30s quando webhook está ativo
+const POLL_INTERVAL_FALLBACK    = 10000  // 10s quando webhook parece morto
 
-// Chamado pelo webhook quando recebe mensagem — pausa polling por 10s
+let webhookActive    = false
+let lastWebhookTime  = 0   // timestamp do último webhook recebido
+let webhookTimer     = null
+let pollCycleCount   = 0
+
+// Chamado pelo webhook a cada mensagem — reduz drasticamente o polling
 function webhookPing() {
-  webhookActive = true
+  webhookActive   = true
+  lastWebhookTime = Date.now()
   clearTimeout(webhookTimer)
-  webhookTimer = setTimeout(() => { webhookActive = false }, 10000)
+  // Pausa polling por 60s após cada webhook (antes era 10s)
+  webhookTimer = setTimeout(() => { webhookActive = false }, 60000)
+}
+
+// Retorna o intervalo correto baseado na saúde do webhook
+function currentInterval() {
+  const webhookAge = Date.now() - lastWebhookTime
+  // Se webhook recebeu algo nos últimos 2 minutos → modo económico (30s)
+  if (webhookAge < 2 * 60 * 1000) return POLL_INTERVAL_WEBHOOK_OK
+  // Webhook parado → modo fallback (10s)
+  return POLL_INTERVAL_FALLBACK
 }
 
 const lastProcessedId = new Map()  // convId → último msgId processado
@@ -20,7 +38,6 @@ let pollTimer  = null
 let isPolling  = false
 let warmDone   = false
 let deps       = null
-let pollCycleCount = 0
 
 // ─── Dedup ────────────────────────────────────────────────────────────────────
 function alreadySeen(msgId) {
@@ -98,13 +115,18 @@ function processMessage(convId, msg, senderFallback) {
 // ─── Ciclo principal ──────────────────────────────────────────────────────────
 async function poll() {
   if (isPolling || !warmDone) return
-  // Webhook ativo recentemente → pula este ciclo
-  if (webhookActive) { return }
   if (isPolling) return
-  isPolling = true
   pollCycleCount++
-  // Log a cada 20 ciclos (~60s) para confirmar que polling está vivo
-  if (pollCycleCount % 20 === 1) console.log(`[Poll] Ciclo #${pollCycleCount} — ativo, verificando...`)
+
+  // Quando webhook está ativo, polling só verifica se passou o intervalo completo
+  // Isso serve como verificação de segurança, não como fonte primária
+  if (webhookActive) {
+    if (pollCycleCount % 10 === 0) console.log(`[Poll] #${pollCycleCount} — webhook ativo, verificação de segurança`)
+    return
+  }
+
+  isPolling = true
+  console.log(`[Poll] #${pollCycleCount} — webhook inativo, modo fallback (${Math.round((Date.now()-lastWebhookTime)/1000)}s sem webhook)`)
 
   try {
     // Busca 2 páginas (~50 conversas) — cobre mais leads ativos
@@ -258,8 +280,18 @@ function start(injected) {
       assigneeName: conv.meta?.assignee?.name || '',
     })
   }
-  console.log(`[Poll] ✅ Iniciado — intervalo ${POLL_INTERVAL/1000}s, detecção por messageId`)
-  warmUp().then(() => { pollTimer = setInterval(poll, POLL_INTERVAL) })
+  console.log(`[Poll] ✅ Iniciado — intervalo dinâmico: ${POLL_INTERVAL_WEBHOOK_OK/1000}s (webhook ok) / ${POLL_INTERVAL_FALLBACK/1000}s (fallback)`)
+  warmUp().then(() => {
+    // Usa setTimeout recursivo com intervalo dinâmico ao invés de setInterval fixo
+    const schedulePoll = () => {
+      const interval = currentInterval()
+      pollTimer = setTimeout(async () => {
+        await poll()
+        schedulePoll()  // reagenda com intervalo atualizado
+      }, interval)
+    }
+    schedulePoll()
+  })
 }
 
 function stop() {
