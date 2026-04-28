@@ -1684,7 +1684,8 @@ export default function ChatPanel() {
   // ── Sync ao trocar de lead ─────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedLead) return
-    setCurrentColumn(selectedLead.column)
+    const effectiveColumn = selectedLead.column || 'leads'
+    setCurrentColumn(effectiveColumn)
     setAssigneeName(selectedLead.assigneeName || '')
     setMessages([])
     setHasMore(false)
@@ -1692,6 +1693,12 @@ export default function ChatPanel() {
     setActiveTab('chat')
     setNotes([])
     setContactTyping(false)
+
+    // Se lead não tem coluna (veio de busca/conversas), registra no banco agora
+    // Isso garante que agendar/atribuir/mover funcione
+    if (!selectedLead.column && selectedLead.id) {
+      api.ensureLead(selectedLead.id).catch(() => {})
+    }
     // markAsRead já tratado pelo setSelectedLead no AppContext
     // Garante zerar localmente por segurança
     const lid = String(selectedLead.id)
@@ -1770,6 +1777,11 @@ export default function ChatPanel() {
   // Para 'agendado' e 'aguardando_pagamento' abre o modal antes de mover
   const handleMove = useCallback(async (column) => {
     if (!selectedLead) return
+    // Lead sem coluna (busca) → trata como 'leads'
+    if (!selectedLead.column) {
+      setSelectedLead({ ...selectedLead, column: 'leads' })
+      setCurrentColumn('leads')
+    }
 
     if (column === 'agendado') {
       setScheduleModal({ lead: selectedLead })

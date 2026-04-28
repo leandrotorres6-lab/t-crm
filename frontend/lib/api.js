@@ -108,6 +108,9 @@ export const api = {
   // Timeline de ações
   getLeadActions: (id) => fetchJSON(`/conversations/${id}/actions`),
 
+  // Garante que lead existe no banco (cria se vier de busca)
+  ensureLead: (id) => fetchJSON(`/conversations/${id}/ensure`, { method: 'POST' }),
+
   // Mark as read
   markRead: (id) => fetchJSON(`/mark-read/${id}`, { method: 'POST', body: JSON.stringify({ source: 'tcrm' }) }),
 
